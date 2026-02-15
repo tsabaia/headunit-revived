@@ -98,20 +98,18 @@ class SocketAccessoryConnection(private val ip: String, private val port: Int, p
                 }
                 
                 transport.soTimeout = 15000
-                // --- INÍCIO DA PROTEÇÃO CONTRA A MEDIATEK ---
+                // Chinese Headunit Mediatek Correction
                 try {
                     transport.connect(InetSocketAddress(ip, port), 5000)
                 } catch (e: Throwable) {
                     val errorMessage = e.message ?: e.toString()
                     if (errorMessage.contains("com.mediatek.cta.CtaHttp") || errorMessage.contains("CtaHttp")) {
-                        AppLog.e("HUR_DEBUG: Crash da Mediatek interceptado! O app não vai fechar.")
-                        // Absorvemos o impacto para o sistema não matar o aplicativo.
+                        AppLog.e("HUR_DEBUG: MediaTek crash intercepted.")
                     } else {
-                        // Se for um erro real de rede (como Wi-Fi desligado), repassamos como IOException
                         throw java.io.IOException(e)
                     }
                 }
-                // --- FIM DA PROTEÇÃO CONTRA A MEDIATEK ---
+                // Chinese Headunit Mediatek Correction
             }
             transport.tcpNoDelay = true
             transport.keepAlive = true
