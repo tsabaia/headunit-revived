@@ -31,6 +31,8 @@ class MainActivity : BaseActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
         // If an Android Auto session is active, jump straight to projection activity
         if (AapService.isConnected) {
             AppLog.i("MainActivity: Active session detected in onCreate, jumping to projection")
@@ -45,7 +47,6 @@ class MainActivity : BaseActivity() {
 
         setTheme(R.style.AppTheme)
         enableEdgeToEdge()
-        super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         val appSettings = Settings(this)
@@ -95,7 +96,19 @@ class MainActivity : BaseActivity() {
                 if (!ip.isNullOrEmpty()) {
                     AppLog.i("Received connect intent for IP: $ip")
                     ContextCompat.startForegroundService(this, AapService.createIntent(ip, this))
+                } else {
+                    AppLog.i("Received connect intent without IP -> triggering last session auto-connect")
+                    val autoIntent = Intent(this, AapService::class.java).apply {
+                        action = AapService.ACTION_CHECK_USB
+                    }
+                    ContextCompat.startForegroundService(this, autoIntent)
                 }
+            } else if (data?.scheme == "headunit" && data.host == "disconnect") {
+                AppLog.i("Received disconnect intent")
+                val stopIntent = Intent(this, AapService::class.java).apply {
+                    action = AapService.ACTION_DISCONNECT
+                }
+                ContextCompat.startForegroundService(this, stopIntent)
             } else if (data?.scheme == "geo" || data?.scheme == "google.navigation" || data?.host == "maps.google.com") {
                 AppLog.i("Received navigation intent: $data")
                 // In the future, we could parse coordinates and send to AA via a custom message

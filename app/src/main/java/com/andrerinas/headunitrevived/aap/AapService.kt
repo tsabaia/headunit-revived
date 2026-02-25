@@ -59,6 +59,7 @@ class AapService : Service(), UsbReceiver.Listener {
     private var pendingConnectionUsbDevice: String = ""
     private val connectionAttemptId = AtomicInteger(0)
     private val isConnecting = AtomicBoolean(false)
+    private var isDestroying = false
 
     private val transport: AapTransport
         get() = App.provide(this).transport
@@ -198,6 +199,8 @@ class AapService : Service(), UsbReceiver.Listener {
 
     override fun onDestroy() {
         AppLog.i("AapService destroying...");
+        isDestroying = true
+        stopForeground(true)
         stopWirelessServer();
         serviceJob.cancel();
         onDisconnect();
@@ -210,13 +213,19 @@ class AapService : Service(), UsbReceiver.Listener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP_SERVICE) {
+            AppLog.i("Stop action received.");
+            isDestroying = true
+            if (isConnected) {
+                transport.stop()
+            }
+            stopForeground(true)
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
         startForeground(1, createNotification());
         when (intent?.action) {
-            ACTION_STOP_SERVICE -> {
-                AppLog.i("Stop action received.");
-                stopSelf();
-                return START_NOT_STICKY;
-            }
             ACTION_START_SELF_MODE -> {
                 startSelfMode();
             }
@@ -229,6 +238,12 @@ class AapService : Service(), UsbReceiver.Listener {
             }
             ACTION_STOP_WIRELESS -> {
                 stopWirelessServer();
+            }
+            ACTION_DISCONNECT -> {
+                AppLog.i("Disconnect action received.");
+                if (isConnected) {
+                    transport.stop()
+                }
             }
             ACTION_CHECK_USB -> {
                 checkAlreadyConnectedUsb();
@@ -568,7 +583,9 @@ class AapService : Service(), UsbReceiver.Listener {
 
     private fun onDisconnect(isClean: Boolean = false) {
         isConnected = false;
-        updateNotification();
+        if (!isDestroying) {
+            updateNotification();
+        }
         sendBroadcast(DisconnectIntent(isClean));
         mediaSession?.isActive = false
         mediaSession?.release()
@@ -635,6 +652,7 @@ class AapService : Service(), UsbReceiver.Listener {
         const val ACTION_SCAN_STARTED = "com.andrerinas.headunitrevived.ACTION_SCAN_STARTED"
         const val ACTION_SCAN_FINISHED = "com.andrerinas.headunitrevived.ACTION_SCAN_FINISHED"
         const val ACTION_STOP_SERVICE = "com.andrerinas.headunitrevived.ACTION_STOP_SERVICE";
+        const val ACTION_DISCONNECT = "com.andrerinas.headunitrevived.ACTION_DISCONNECT";
         const val ACTION_REQUEST_NIGHT_MODE_UPDATE = "com.andrerinas.headunitrevived.ACTION_REQUEST_NIGHT_MODE_UPDATE"
         private const val TYPE_USB = 1;
         private const val TYPE_WIFI = 2;
