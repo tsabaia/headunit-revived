@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
 import android.app.UiModeManager
+import android.content.pm.ServiceInfo
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -15,6 +16,7 @@ import android.hardware.usb.UsbManager
 import android.net.ConnectivityManager
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.os.Parcel
 import android.os.Parcelable
 import android.widget.Toast
@@ -36,6 +38,7 @@ import com.andrerinas.headunitrevived.contract.DisconnectIntent
 import com.andrerinas.headunitrevived.location.GpsLocationService
 import com.andrerinas.headunitrevived.utils.AppLog
 import com.andrerinas.headunitrevived.utils.DeviceIntent
+import com.andrerinas.headunitrevived.utils.LocaleHelper
 import com.andrerinas.headunitrevived.utils.NightModeManager
 import com.andrerinas.headunitrevived.utils.Settings
 import kotlinx.coroutines.*
@@ -54,12 +57,32 @@ class AapService : Service(), UsbReceiver.Listener {
     private var wirelessServer: WirelessServer? = null
     private var mediaSession: MediaSessionCompat? = null
 
+    fun updateMediaSessionState(isPlaying: Boolean) {
+        val state = if (isPlaying) {
+            android.support.v4.media.session.PlaybackStateCompat.STATE_PLAYING
+        } else {
+            android.support.v4.media.session.PlaybackStateCompat.STATE_STOPPED
+        }
+        
+        mediaSession?.setPlaybackState(
+            android.support.v4.media.session.PlaybackStateCompat.Builder()
+                .setState(state, 0, 1.0f)
+                .setActions(android.support.v4.media.session.PlaybackStateCompat.ACTION_PLAY or 
+                           android.support.v4.media.session.PlaybackStateCompat.ACTION_PAUSE or 
+                           android.support.v4.media.session.PlaybackStateCompat.ACTION_STOP)
+                .build()
+        )
+        AppLog.d("MediaSession: State updated to ${if (isPlaying) "PLAYING" else "STOPPED"}")
+    }
+
     private var pendingConnectionType: String = ""
     private var pendingConnectionIp: String = ""
     private var pendingConnectionUsbDevice: String = ""
     private val connectionAttemptId = AtomicInteger(0)
-    private val isConnecting = AtomicBoolean(false)
     private var isDestroying = false
+
+    private var usbStabilityJob: Job? = null
+    private var stableDeviceName: String? = null
 
     private val transport: AapTransport
         get() = App.provide(this).transport
@@ -83,6 +106,10 @@ class AapService : Service(), UsbReceiver.Listener {
                 }
             }
         }
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(LocaleHelper.wrapContext(newBase))
     }
 
     override fun onBind(intent: Intent): IBinder? = null
@@ -124,7 +151,21 @@ class AapService : Service(), UsbReceiver.Listener {
 
     private fun checkAlreadyConnectedUsb() {
         val settings = App.provide(this).settings
-        if (!settings.autoConnectLastSession || isConnected || isConnecting.get()) return
+        val lastSession = settings.autoConnectLastSession
+        val singleUsb = settings.autoConnectSingleUsbDevice
+
+        if (!lastSession && !singleUsb) {
+            AppLog.i("checkAlreadyConnectedUsb: skipped (no auto-connect modes enabled)")
+            return
+        }
+        if (isConnected) {
+            AppLog.i("checkAlreadyConnectedUsb: skipped (already connected)")
+            return
+        }
+        if (isConnecting.get()) {
+            AppLog.i("checkAlreadyConnectedUsb: skipped (connection in progress)")
+            return
+        }
 
         val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
         val deviceList = usbManager.deviceList
@@ -135,21 +176,115 @@ class AapService : Service(), UsbReceiver.Listener {
                 handleConnectionIntent(createIntent(device, this))
                 return
             }
-            
-            if (settings.isConnectingDevice(deviceCompat)) {
-                if (usbManager.hasPermission(device)) {
-                    AppLog.i("Found known USB device with permission: ${deviceCompat.uniqueName}. Switching to accessory mode.")
-                    val usbMode = UsbAccessoryMode(usbManager)
-                    if (usbMode.connectAndSwitch(device)) {
-                         AppLog.i("Successfully requested switch to accessory mode for ${deviceCompat.uniqueName}")
-                         // The device will detach and re-attach as accessory, triggering UsbAttachedActivity or our receiver
-                         return
+        }
+
+        // Last-session mode: reconnect to a known/allowed device
+        if (lastSession) {
+            for (device in deviceList.values) {
+                val deviceCompat = UsbDeviceCompat(device)
+                if (settings.isConnectingDevice(deviceCompat)) {
+                    if (usbManager.hasPermission(device)) {
+                        AppLog.i("Found known USB device with permission: ${deviceCompat.uniqueName}. Switching to accessory mode.")
+                        isConnecting.set(true)
+                        val usbMode = UsbAccessoryMode(usbManager)
+                        if (usbMode.connectAndSwitch(device)) {
+                            AppLog.i("Successfully requested switch to accessory mode for ${deviceCompat.uniqueName}. Waiting for re-enumeration...")
+                            // Reset isConnecting — the AOA switch is done. The actual AAP
+                            // connection will be established by onUsbAttach when the device
+                            // re-enumerates in accessory mode.
+                            isConnecting.set(false)
+                            return
+                        }
+                        isConnecting.set(false)
+                    } else {
+                        AppLog.i("Found known USB device but no permission: ${deviceCompat.uniqueName}")
                     }
-                } else {
-                    AppLog.i("Found known USB device but no permission: ${deviceCompat.uniqueName}")
                 }
             }
         }
+
+        // Single-USB mode: if exactly one non-accessory device is present, connect to it
+        if (singleUsb) {
+            val nonAccessoryDevices = deviceList.values.filter { !UsbDeviceCompat.isInAccessoryMode(it) }
+            if (nonAccessoryDevices.size == 1) {
+                // Skip if stability check is already running for this exact device
+                val deviceName = UsbDeviceCompat(nonAccessoryDevices[0]).uniqueName
+                if (usbStabilityJob != null && stableDeviceName == deviceName) {
+                    AppLog.i("checkAlreadyConnectedUsb: stability check already in progress for $deviceName, skipping")
+                    return
+                }
+                startSingleUsbStabilityCheck(nonAccessoryDevices[0])
+                return
+            } else if (usbStabilityJob != null) {
+                cancelUsbStabilityCheck()
+            }
+        }
+    }
+
+    private fun startSingleUsbStabilityCheck(device: UsbDevice) {
+        val settings = App.provide(this).settings
+        if (!settings.usbStabilityCheck) {
+            performSingleUsbConnect(device)
+            return
+        }
+
+        val deviceName = UsbDeviceCompat(device).uniqueName
+        val timeoutMs = settings.usbStabilityTimeout * 1000L
+
+        stableDeviceName = deviceName
+        usbStabilityJob?.cancel()
+
+        AppLog.i("USB stability: Starting ${settings.usbStabilityTimeout}s timer for $deviceName")
+        Toast.makeText(this, getString(R.string.usb_device_settling), Toast.LENGTH_SHORT).show()
+
+        usbStabilityJob = serviceScope.launch {
+            delay(timeoutMs)
+
+            val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+            val stillPresent = usbManager.deviceList.values.any {
+                UsbDeviceCompat(it).uniqueName == deviceName
+            }
+
+            if (stillPresent) {
+                val dev = usbManager.deviceList.values.first {
+                    UsbDeviceCompat(it).uniqueName == deviceName
+                }
+                AppLog.i("USB stability: Device $deviceName stable after ${settings.usbStabilityTimeout}s, connecting")
+                performSingleUsbConnect(dev)
+            } else {
+                AppLog.i("USB stability: Device $deviceName disappeared during wait")
+                cancelUsbStabilityCheck()
+            }
+        }
+    }
+
+    private fun performSingleUsbConnect(device: UsbDevice) {
+        val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+        if (usbManager.hasPermission(device)) {
+            val deviceName = UsbDeviceCompat(device).uniqueName
+            AppLog.i("Single USB auto-connect: connecting to $deviceName")
+            isConnecting.set(true)
+            val usbMode = UsbAccessoryMode(usbManager)
+            if (usbMode.connectAndSwitch(device)) {
+                AppLog.i("Successfully requested switch to accessory mode for single USB device. Waiting for re-enumeration...")
+                // Reset isConnecting — the AOA switch is done. The actual AAP connection
+                // will be established by onUsbAttach when the device re-enumerates in
+                // accessory mode (which sets isConnecting again via handleConnectionIntent).
+                isConnecting.set(false)
+            } else {
+                AppLog.w("Single USB auto-connect: connectAndSwitch failed for $deviceName")
+                isConnecting.set(false)
+            }
+        } else {
+            AppLog.i("Single USB auto-connect: device found but no permission")
+        }
+        cancelUsbStabilityCheck()
+    }
+
+    private fun cancelUsbStabilityCheck() {
+        usbStabilityJob?.cancel()
+        usbStabilityJob = null
+        stableDeviceName = null
     }
 
     private fun createNotification(): Notification {
@@ -165,7 +300,7 @@ class AapService : Service(), UsbReceiver.Listener {
 
         val (notificationIntent, requestCode) = if (isConnected) {
             AapProjectionActivity.intent(this).apply {
-                addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             } to 100
         } else {
             Intent(this, com.andrerinas.headunitrevived.main.MainActivity::class.java).apply {
@@ -200,8 +335,10 @@ class AapService : Service(), UsbReceiver.Listener {
     override fun onDestroy() {
         AppLog.i("AapService destroying...");
         isDestroying = true
+        isConnecting.set(false)
         stopForeground(true)
         stopWirelessServer();
+        cancelUsbStabilityCheck()
         serviceJob.cancel();
         onDisconnect();
         nightModeManager?.stop()
@@ -213,6 +350,14 @@ class AapService : Service(), UsbReceiver.Listener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Android 8.0+ requirements: call startForeground as early as possible
+        val notification = createNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else {
+            startForeground(1, notification)
+        }
+
         if (intent?.action == ACTION_STOP_SERVICE) {
             AppLog.i("Stop action received.");
             isDestroying = true
@@ -224,7 +369,6 @@ class AapService : Service(), UsbReceiver.Listener {
             return START_NOT_STICKY;
         }
 
-        startForeground(1, createNotification());
         when (intent?.action) {
             ACTION_START_SELF_MODE -> {
                 startSelfMode();
@@ -245,7 +389,18 @@ class AapService : Service(), UsbReceiver.Listener {
                     transport.stop()
                 }
             }
+            ACTION_RETRY_CONNECTION -> {
+                retryConnection()
+            }
+            ACTION_RESET_USB -> {
+                resetUsbAndReconnect()
+            }
+            ACTION_REQUEST_NIGHT_MODE_UPDATE -> {
+                AppLog.i("Night mode update action received.");
+                nightModeManager?.resendCurrentState()
+            }
             ACTION_CHECK_USB -> {
+                AppLog.i("ACTION_CHECK_USB received")
                 checkAlreadyConnectedUsb();
             }
             else -> {
@@ -262,10 +417,13 @@ class AapService : Service(), UsbReceiver.Listener {
         val connectionType = intent?.getIntExtra(EXTRA_CONNECTION_TYPE, 0) ?: 0;
         if (connectionType == 0) return ;
 
+        val connectionTypeName = if (connectionType == TYPE_USB) "USB" else "WiFi"
+        AppLog.i("handleConnectionIntent: type=$connectionTypeName, isConnected=$isConnected, isConnecting=${isConnecting.get()}")
+
         // Ensure old connection is closed!
         accessoryConnection?.disconnect()
         accessoryConnection = connectionFactory(intent, this);
-        
+
         if (accessoryConnection == null) {
             AppLog.e("Cannot create connection from intent");
             return;
@@ -290,24 +448,25 @@ class AapService : Service(), UsbReceiver.Listener {
         val attemptId = connectionAttemptId.incrementAndGet();
 
         serviceScope.launch {
+            isConnecting.set(true)
             var retryCount = 0
             val maxRetries = 3
             var success = false
-            
+
             while (retryCount <= maxRetries && !success) {
                 if (retryCount > 0) {
                     AppLog.i("Retrying USB connection (attempt ${retryCount + 1}/$maxRetries)...")
                     delay(1500)
                 }
-                
+
                 success = withContext(Dispatchers.IO) {
                     conn?.connect() ?: false
                 }
-                
+
                 if (success || connectionType != TYPE_USB) break
                 retryCount++
             }
-            
+
             onConnectionResult(success, attemptId, conn)
         }
     }
@@ -551,6 +710,10 @@ class AapService : Service(), UsbReceiver.Listener {
                         isActive = true
                     }
 
+                    transport.onAudioFocusStateChanged = { isPlaying ->
+                        updateMediaSessionState(isPlaying)
+                    }
+
                     // Sync current night mode state immediately after connection
                     nightModeManager?.resendCurrentState()
                     
@@ -569,7 +732,7 @@ class AapService : Service(), UsbReceiver.Listener {
 
                     val aapIntent = AapProjectionActivity.intent(this@AapService).apply {
                         putExtra(AapProjectionActivity.EXTRA_FOCUS, true);
-                        addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP);
                     };
                     startActivity(aapIntent);
                 } else {
@@ -583,6 +746,8 @@ class AapService : Service(), UsbReceiver.Listener {
 
     private fun onDisconnect(isClean: Boolean = false) {
         isConnected = false;
+        isConnecting.set(false)
+        cancelUsbStabilityCheck()
         if (!isDestroying) {
             updateNotification();
         }
@@ -604,13 +769,167 @@ class AapService : Service(), UsbReceiver.Listener {
             }
         } else if (!isClean) {
              val mode = App.provide(this).settings.wifiConnectionMode
-             if (mode == 1) { // Auto Mode
-                 AppLog.i("AapService: Unclean disconnect in Auto Mode. Retrying discovery in 2s...");
+             val lastType = App.provide(this).settings.lastConnectionType
+             if (mode == 1 && lastType == Settings.CONNECTION_TYPE_WIFI) { // Auto Mode, WiFi only
+                 AppLog.i("AapService: Unclean WiFi disconnect in Auto Mode. Retrying discovery in 2s...");
                  serviceScope.launch {
                      delay(2000);
                      if (!isConnected) startDiscovery(oneShot = true);
                  }
              }
+        }
+    }
+
+    private fun retryConnection() {
+        val settings = App.provide(this).settings
+        val type = settings.lastConnectionType
+        val ip = settings.lastConnectionIp
+        val usbDeviceName = settings.lastConnectionUsbDevice
+        val maxAttempts = settings.maxAutoRetryAttempts
+
+        AppLog.i("retryConnection: type=$type, ip=$ip, usb=$usbDeviceName, maxAttempts=$maxAttempts")
+
+        if (isConnected) {
+            onDisconnect()
+        }
+
+        isConnecting.set(true)
+        serviceScope.launch {
+            try {
+                for (attempt in 1..maxAttempts) {
+                    if (isConnected || isDestroying) break
+
+                    val delayMs = if (attempt == 1) 1000L else 3000L
+                    AppLog.i("retryConnection: attempt $attempt/$maxAttempts, waiting ${delayMs}ms")
+                    delay(delayMs)
+
+                    if (type == Settings.CONNECTION_TYPE_WIFI && ip.isNotEmpty()) {
+                        AppLog.i("retryConnection: Reconnecting to WiFi $ip (attempt $attempt/$maxAttempts)")
+                        handleConnectionIntent(createIntent(ip, this@AapService))
+                    } else if (type == Settings.CONNECTION_TYPE_USB) {
+                        val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+                        val accessoryDevice = usbManager.deviceList.values.firstOrNull {
+                            UsbDeviceCompat.isInAccessoryMode(it)
+                        }
+                        if (accessoryDevice != null) {
+                            AppLog.i("retryConnection: Found accessory-mode device, reconnecting (attempt $attempt/$maxAttempts)")
+                            handleConnectionIntent(createIntent(accessoryDevice, this@AapService))
+                        } else if (usbDeviceName.isNotEmpty()) {
+                            val knownDevice = usbManager.deviceList.values.firstOrNull {
+                                UsbDeviceCompat(it).uniqueName == usbDeviceName
+                            }
+                            if (knownDevice != null) {
+                                AppLog.i("retryConnection: Found known device $usbDeviceName, switching to accessory mode (attempt $attempt/$maxAttempts)")
+                                val usbMode = UsbAccessoryMode(usbManager)
+                                usbMode.connectAndSwitch(knownDevice)
+                            } else {
+                                AppLog.w("retryConnection: USB device $usbDeviceName not found (attempt $attempt/$maxAttempts)")
+                                continue
+                            }
+                        }
+                    }
+
+                    // Wait up to 5s for connection result
+                    for (i in 1..10) {
+                        delay(500)
+                        if (isConnected) break
+                    }
+                    if (isConnected) break
+                }
+
+                if (!isConnected) {
+                    AppLog.w("retryConnection: All $maxAttempts attempts failed")
+                }
+            } catch (e: CancellationException) {
+                AppLog.i("retryConnection: cancelled")
+                throw e
+            } finally {
+                if (!isConnected) isConnecting.set(false)
+            }
+        }
+    }
+
+    private fun resetUsbAndReconnect() {
+        AppLog.i("resetUsbAndReconnect: Starting USB reset")
+
+        if (isConnected) {
+            onDisconnect()
+        }
+
+        val settings = App.provide(this).settings
+        val stabilityEnabled = settings.usbStabilityCheck
+        val stabilityThresholdMs = if (stabilityEnabled) settings.usbStabilityTimeout * 1000L else 0L
+
+        isConnecting.set(true)
+        serviceScope.launch {
+            try {
+                delay(1500) // Wait for cleanup
+
+                if (stabilityEnabled) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@AapService, getString(R.string.usb_device_settling), Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
+                var localStableDeviceName: String? = null
+                var stableSince = 0L
+                val startTime = SystemClock.elapsedRealtime()
+                val TIMEOUT = 90_000L
+
+                while (SystemClock.elapsedRealtime() - startTime < TIMEOUT && !isConnected) {
+                    val device = usbManager.deviceList.values.firstOrNull {
+                        !UsbDeviceCompat.isInAccessoryMode(it)
+                    }
+
+                    if (device != null) {
+                        val name = UsbDeviceCompat(device).uniqueName
+
+                        if (!stabilityEnabled) {
+                            AppLog.i("resetUsbAndReconnect: Device $name found, connecting immediately (stability check off)")
+                            val usbMode = UsbAccessoryMode(usbManager)
+                            usbMode.connectAndSwitch(device)
+                            break
+                        }
+
+                        if (name == localStableDeviceName) {
+                            if (SystemClock.elapsedRealtime() - stableSince >= stabilityThresholdMs) {
+                                AppLog.i("resetUsbAndReconnect: Device $name stable for ${stabilityThresholdMs}ms, connecting")
+                                val usbMode = UsbAccessoryMode(usbManager)
+                                usbMode.connectAndSwitch(device)
+                                break
+                            }
+                        } else {
+                            localStableDeviceName = name
+                            stableSince = SystemClock.elapsedRealtime()
+                            AppLog.i("resetUsbAndReconnect: New device detected: $name, waiting for stability (${settings.usbStabilityTimeout}s)")
+                        }
+                    } else {
+                        if (localStableDeviceName != null) {
+                            AppLog.i("resetUsbAndReconnect: Device disappeared, resetting stability counter")
+                        }
+                        localStableDeviceName = null
+                        stableSince = 0
+                    }
+
+                    delay(1500)
+                }
+
+                if (!isConnected && localStableDeviceName == null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@AapService,
+                            getString(R.string.reset_usb_timeout),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            } catch (e: CancellationException) {
+                AppLog.i("resetUsbAndReconnect: cancelled")
+                throw e
+            } finally {
+                if (!isConnected) isConnecting.set(false)
+            }
         }
     }
 
@@ -623,6 +942,12 @@ class AapService : Service(), UsbReceiver.Listener {
     }
 
     override fun onUsbDetach(device: UsbDevice) {
+        val detachedName = UsbDeviceCompat(device).uniqueName
+        if (stableDeviceName == detachedName) {
+            AppLog.i("USB stability: Tracked device $detachedName detached, resetting timer")
+            cancelUsbStabilityCheck()
+        }
+
         if (accessoryConnection is UsbAccessoryConnection) {
             if ((accessoryConnection as UsbAccessoryConnection).isDeviceRunning(device)) {
                 onDisconnect();
@@ -631,9 +956,27 @@ class AapService : Service(), UsbReceiver.Listener {
     }
 
     override fun onUsbAttach(device: UsbDevice) {
+        val deviceName = UsbDeviceCompat(device).uniqueName
+        AppLog.i("onUsbAttach: device=$deviceName, isConnected=$isConnected, isConnecting=${isConnecting.get()}")
+
+        if (isConnected) {
+            AppLog.i("onUsbAttach: already connected, skipping")
+            return
+        }
+
+        // If the attached device is already in accessory mode, connect directly.
+        // This handles the re-enumeration after connectAndSwitch() where the phone
+        // detaches (e.g. Xiaomi 2717:FF40) and re-appears as a Google AOA device
+        // (18D1:2D00). Without this, checkAlreadyConnectedUsb() would skip because
+        // isConnecting is still true from the AOA mode switch phase.
+        if (UsbDeviceCompat.isInAccessoryMode(device)) {
+            AppLog.i("onUsbAttach: Accessory-mode device $deviceName attached, connecting directly")
+            handleConnectionIntent(createIntent(device, this))
+            return
+        }
+
         val settings = App.provide(this).settings
-        if (settings.autoConnectLastSession) {
-            AppLog.i("USB attached and auto-connect enabled, checking USB.")
+        if (settings.autoConnectLastSession || settings.autoConnectSingleUsbDevice) {
             checkAlreadyConnectedUsb()
         }
     }
@@ -643,6 +986,7 @@ class AapService : Service(), UsbReceiver.Listener {
         var isConnected = false;
         var selfMode = false;
         var isScanning = false;
+        private val isConnecting = AtomicBoolean(false)
         var pendingSocket: java.net.Socket? = null;
         const val ACTION_START_SELF_MODE = "com.andrerinas.headunitrevived.ACTION_START_SELF_MODE";
         const val ACTION_START_WIRELESS = "com.andrerinas.headunitrevived.ACTION_START_WIRELESS";
@@ -654,6 +998,8 @@ class AapService : Service(), UsbReceiver.Listener {
         const val ACTION_STOP_SERVICE = "com.andrerinas.headunitrevived.ACTION_STOP_SERVICE";
         const val ACTION_DISCONNECT = "com.andrerinas.headunitrevived.ACTION_DISCONNECT";
         const val ACTION_REQUEST_NIGHT_MODE_UPDATE = "com.andrerinas.headunitrevived.ACTION_REQUEST_NIGHT_MODE_UPDATE"
+        const val ACTION_RETRY_CONNECTION = "com.andrerinas.headunitrevived.ACTION_RETRY_CONNECTION"
+        const val ACTION_RESET_USB = "com.andrerinas.headunitrevived.ACTION_RESET_USB"
         private const val TYPE_USB = 1;
         private const val TYPE_WIFI = 2;
         private const val EXTRA_CONNECTION_TYPE = "extra_connection_type";

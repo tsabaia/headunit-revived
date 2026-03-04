@@ -73,6 +73,7 @@ class AapTransport(
     private var aapRead: AapRead? = null
     var isQuittingAllowed: Boolean = false
     var ignoreNextStopRequest: Boolean = false
+    var onAudioFocusStateChanged: ((Boolean) -> Unit)? = null
     private var pollHandler: Handler? = null
     private val pollHandlerCallback = Handler.Callback {
         val ret = aapRead?.read() ?: -1
@@ -171,10 +172,12 @@ class AapTransport(
         sendThread = HandlerThread("AapTransport:Handler::Send", Process.THREAD_PRIORITY_AUDIO)
         sendThread!!.start()
         sendHandler = Handler(sendThread!!.looper, sendHandlerCallback)
+        sendHandler?.post { com.andrerinas.headunitrevived.utils.LegacyOptimizer.setHighPriority() }
 
         pollThread = HandlerThread("AapTransport:Handler::Poll", Process.THREAD_PRIORITY_AUDIO)
         pollThread!!.start()
         pollHandler = Handler(pollThread!!.looper, pollHandlerCallback)
+        pollHandler?.post { com.andrerinas.headunitrevived.utils.LegacyOptimizer.setHighPriority() }
 
         SystemClock.sleep(200)
 
