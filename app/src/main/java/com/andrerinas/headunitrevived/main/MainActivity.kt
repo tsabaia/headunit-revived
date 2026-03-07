@@ -12,14 +12,19 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.andrerinas.headunitrevived.App
 import com.andrerinas.headunitrevived.R
 import com.andrerinas.headunitrevived.aap.AapProjectionActivity
 import com.andrerinas.headunitrevived.aap.AapService
 import com.andrerinas.headunitrevived.app.BaseActivity
+import androidx.lifecycle.lifecycleScope
 import com.andrerinas.headunitrevived.utils.AppLog
 import com.andrerinas.headunitrevived.utils.Settings
 import com.andrerinas.headunitrevived.utils.SetupWizard
 import com.andrerinas.headunitrevived.utils.SystemUI
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 class MainActivity : BaseActivity() {
 
@@ -36,7 +41,7 @@ class MainActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
 
         // If an Android Auto session is active, jump straight to projection activity
-        if (AapService.isConnected) {
+        if (App.provide(this).commManager.isConnected) {
             AppLog.i("MainActivity: Active session detected in onCreate, jumping to projection")
             val aapIntent = AapProjectionActivity.intent(this).apply {
                 putExtra(AapProjectionActivity.EXTRA_FOCUS, true)
@@ -79,6 +84,24 @@ class MainActivity : BaseActivity() {
         requestPermissions()
         viewModel.register()
         handleIntent(intent)
+        setupWifiDirectInfo()
+    }
+
+    private fun setupWifiDirectInfo() {
+        val tvInfo = findViewById<android.widget.TextView>(R.id.wifi_direct_info)
+        val settings = Settings(this)
+
+        lifecycleScope.launch {
+            AapService.wifiDirectName.collectLatest { name ->
+                val isHelperMode = settings.wifiConnectionMode == 2
+                if (isHelperMode && name != null) {
+                    tvInfo.text = "WiFi Direct: $name"
+                    tvInfo.visibility = View.VISIBLE
+                } else {
+                    tvInfo.visibility = View.GONE
+                }
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -93,7 +116,28 @@ class MainActivity : BaseActivity() {
 
         if (intent.action == Intent.ACTION_VIEW) {
             val data = intent.data
-            if (data?.scheme == "geo" || data?.scheme == "google.navigation" || data?.host == "maps.google.com") {
+            if (data?.scheme == "headunit" && data.host == "connect") {
+                val ip = data.getQueryParameter("ip")
+                if (!ip.isNullOrEmpty()) {
+                    AppLog.i("Received connect intent for IP: $ip")
+                    ContextCompat.startForegroundService(this, Intent(this, AapService::class.java).apply {
+                        action = AapService.ACTION_CONNECT_SOCKET
+                    })
+                    lifecycleScope.launch(Dispatchers.IO) { App.provide(this@MainActivity).commManager.connect(ip, 5277) }
+                } else {
+                    AppLog.i("Received connect intent without IP -> triggering last session auto-connect")
+                    val autoIntent = Intent(this, AapService::class.java).apply {
+                        action = AapService.ACTION_CHECK_USB
+                    }
+                    ContextCompat.startForegroundService(this, autoIntent)
+                }
+            } else if (data?.scheme == "headunit" && data.host == "disconnect") {
+                AppLog.i("Received disconnect intent")
+                val stopIntent = Intent(this, AapService::class.java).apply {
+                    action = AapService.ACTION_DISCONNECT
+                }
+                ContextCompat.startForegroundService(this, stopIntent)
+            } else if (data?.scheme == "geo" || data?.scheme == "google.navigation" || data?.host == "maps.google.com") {
                 AppLog.i("Received navigation intent: $data")
                 // In the future, we could parse coordinates and send to AA via a custom message
                 // For now, we just ensure the app is opened (which it is by reaching this point)
@@ -123,7 +167,7 @@ class MainActivity : BaseActivity() {
     private fun setFullscreen() {
         val root = findViewById<View>(R.id.root)
         val appSettings = Settings(this)
-        SystemUI.apply(window, root, appSettings.startInFullscreenMode)
+        SystemUI.apply(window, root, appSettings.fullscreenMode)
     }
 
     override fun onResume() {
@@ -133,7 +177,7 @@ class MainActivity : BaseActivity() {
         checkSetupFlow()
 
         // If an Android Auto session is active, bring the projection activity to front
-        if (AapService.isConnected) {
+        if (App.provide(this).commManager.isConnected) {
             AppLog.i("MainActivity: Active session detected, bringing projection to front")
             val aapIntent = AapProjectionActivity.intent(this).apply {
                 putExtra(AapProjectionActivity.EXTRA_FOCUS, true)

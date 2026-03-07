@@ -159,13 +159,6 @@
     <string name="move_up">Przesuń w górę</string>
     <string name="move_down">Przesuń w dół</string>
     <string name="auto_connecting_single_usb">Automatyczne łączenie z urządzeniem USB…</string>
-    <string name="usb_stability_check">Sprawdzanie stabilności adaptera USB</string>
-    <string name="usb_stability_check_description">Włącz, jeśli masz bezprzewodowy adapter Android Auto, który wielokrotnie się rozłącza i ponownie łączy, zanim zacznie działać poprawnie</string>
-    <string name="usb_stability_timeout">Limit czasu stabilności</string>
-    <string name="usb_stability_timeout_description">Sekundy, przez które urządzenie musi pozostać podłączone przed automatycznym połączeniem lub ponownym połączeniem (%d s)</string>
-    <string name="usb_device_settling">Oczekiwanie na stabilizację urządzenia USB…</string>
-    <string name="max_auto_retry_attempts">Maks. prób automatycznego ponownego połączenia</string>
-    <string name="max_auto_retry_attempts_description">Liczba automatycznych prób ponownego połączenia (%d)</string>
     <string name="video_codec">Kodek wideo</string>
     <string name="fps_limit">Limit FPS</string>
     <string name="save">Zapisz</string>
@@ -173,9 +166,6 @@
     <string name="add_new">Dodaj nowy</string>
     <string name="cancel">Anuluj</string>
     <string name="enable">Włącz</string>
-    <string name="experimental_feature_title">Funkcja eksperymentalna</string>
-    <string name="experimental_feature_message">Ta funkcja jest eksperymentalna i może nie działać poprawnie na wszystkich urządzeniach. Czy chcesz ją włączyć?</string>
-    <string name="experimental_feature_usb_hint">Jeśli zamierzasz używać automatycznego połączenia USB, najpierw przetestuj z tą opcją wyłączoną.</string>
 
     <!-- Audio Settings -->
     <string name="category_audio">Dźwięk</string>
@@ -253,9 +243,6 @@
     <string name="failed">Niepowodzenie</string>
     <string name="failed_start_android_auto">Uruchomienie Android Auto nie powiodło się</string>
     <string name="android_auto_starting">Android Auto uruchamia się…</string>
-    <string name="retry">Ponów</string>
-    <string name="retry_connection_title">Ponów połączenie</string>
-    <string name="retry_connection_option">Ponów Android Auto</string>
     <string name="reset_usb_option">Zresetuj połączenie USB</string>
     <string name="reset_usb_timeout">Nie znaleziono urządzenia USB. Sprawdź połączenie.</string>
     <string name="notification_service_running">Headunit Revived działa</string>
@@ -286,4 +273,13 @@
     <string name="setup_widescreen_detected">Wykryto panoramiczny wyświetlacz.</string>
     <string name="auto_optimize">Automatycznie optymalizuj ustawienia</string>
     <string name="auto_optimize_desc">Uruchom sprawdzanie systemu, aby znaleźć najlepsze ustawienia dla swojego urządzenia.</string>
-</resources>
+    <string name="fullscreen_none">Normal (All bars visible)</string>
+    <string name="fullscreen_immersive">Immersive (All bars hidden)</string>
+    <string name="fullscreen_status_only">Hide status bar only</string>
+    <string name="log_level">Log Level</string>
+    <string name="log_level_description">Choose the detail level of log output for debugging.</string>
+    <string name="start_log_capture">Start log capture</string>
+    <string name="start_log_capture_description">Begins recording system logs to a file.</string>
+    <string name="stop_log_capture">Stop log capture</string>
+    <string name="stop_log_capture_description">Stops recording and saves the log file.</string>
+    </resources>
