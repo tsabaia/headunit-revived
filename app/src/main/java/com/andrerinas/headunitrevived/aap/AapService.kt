@@ -214,6 +214,12 @@ class AapService : Service(), UsbReceiver.Listener {
         nightModeManager = NightModeManager(this, App.provide(this).settings) { isNight ->
             AppLog.i("NightMode update: $isNight")
             commManager.send(NightModeEvent(isNight))
+            // Also notify local components (for AA monochrome filter)
+            val intent = Intent(ACTION_NIGHT_MODE_CHANGED).apply {
+                setPackage(packageName)
+                putExtra("isNight", isNight)
+            }
+            sendBroadcast(intent)
         }
         nightModeManager?.start()
     }
@@ -287,12 +293,6 @@ class AapService : Service(), UsbReceiver.Listener {
     private fun setupMediaSession() {
         mediaSession = MediaSessionCompat(this, "HeadunitRevived").apply {
             setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() { commManager.send(android.view.KeyEvent.KEYCODE_MEDIA_PLAY, true); commManager.send(android.view.KeyEvent.KEYCODE_MEDIA_PLAY, false) }
-                override fun onPause() { commManager.send(android.view.KeyEvent.KEYCODE_MEDIA_PAUSE, true); commManager.send(android.view.KeyEvent.KEYCODE_MEDIA_PAUSE, false) }
-                override fun onSkipToNext() { commManager.send(android.view.KeyEvent.KEYCODE_MEDIA_NEXT, true); commManager.send(android.view.KeyEvent.KEYCODE_MEDIA_NEXT, false) }
-                override fun onSkipToPrevious() { commManager.send(android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS, true); commManager.send(android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS, false) }
-                override fun onStop() { commManager.send(android.view.KeyEvent.KEYCODE_MEDIA_STOP, true); commManager.send(android.view.KeyEvent.KEYCODE_MEDIA_STOP, false) }
-
                 override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
                     val keyEvent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         mediaButtonEvent?.getParcelableExtra(Intent.EXTRA_KEY_EVENT, android.view.KeyEvent::class.java)
@@ -300,11 +300,23 @@ class AapService : Service(), UsbReceiver.Listener {
                         @Suppress("DEPRECATION")
                         mediaButtonEvent?.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
                     }
-                    keyEvent?.let {
-                        val isPress = it.action == android.view.KeyEvent.ACTION_DOWN
-                        commManager.send(it.keyCode, isPress)
+
+                    // Only handle ACTION_DOWN to ensure instant response and prevent double triggers.
+                    if (keyEvent != null && keyEvent.action == android.view.KeyEvent.ACTION_DOWN) {
+                        val keyCode = keyEvent.keyCode
+                        AppLog.d("MediaSession: Handling key $keyCode via ACTION_DOWN")
+                        
+                        // Send a complete click sequence (press + release) immediately
+                        commManager.send(keyCode, true)
+                        commManager.send(keyCode, false)
                         return true
                     }
+                    
+                    // Consume ACTION_UP to prevent fallback to individual callbacks (onPlay, etc.)
+                    if (keyEvent != null && keyEvent.action == android.view.KeyEvent.ACTION_UP) {
+                        return true
+                    }
+
                     return super.onMediaButtonEvent(mediaButtonEvent)
                 }
             })
@@ -698,10 +710,18 @@ class AapService : Service(), UsbReceiver.Listener {
         val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
         val deviceList = usbManager.deviceList
 
-        // Check for devices already in accessory mode first
+        // Check for devices already in accessory mode first.
+        // After AOA switch the device re-enumerates and appears as a new USB device — we must
+        // request permission for this new device before openDevice(), or SecurityException occurs.
         for (device in deviceList.values) {
             if (UsbDeviceCompat.isInAccessoryMode(device)) {
-                AppLog.i("Found device already in accessory mode: ${UsbDeviceCompat(device).uniqueName}")
+                val deviceName = UsbDeviceCompat(device).uniqueName
+                AppLog.i("Found device already in accessory mode: $deviceName")
+                if (!usbManager.hasPermission(device)) {
+                    AppLog.i("Accessory-mode device has no permission (re-enumerated); requesting: $deviceName")
+                    requestUsbPermission(device)
+                    return
+                }
                 isSwitchingToAccessory.set(true)
                 serviceScope.launch {
                     try {
@@ -1157,6 +1177,7 @@ class AapService : Service(), UsbReceiver.Listener {
         const val ACTION_STOP_SERVICE              = "com.andrerinas.headunitrevived.ACTION_STOP_SERVICE"
         const val ACTION_DISCONNECT                = "com.andrerinas.headunitrevived.ACTION_DISCONNECT"
         const val ACTION_REQUEST_NIGHT_MODE_UPDATE = "com.andrerinas.headunitrevived.ACTION_REQUEST_NIGHT_MODE_UPDATE"
+        const val ACTION_NIGHT_MODE_CHANGED      = "com.andrerinas.headunitrevived.ACTION_NIGHT_MODE_CHANGED"
         /**
          * Sent after the caller has already invoked [CommManager.connect(socket)].
          * The [observeConnectionState] flow observer handles the result — [onStartCommand]
