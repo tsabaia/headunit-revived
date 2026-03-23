@@ -76,6 +76,7 @@ class SettingsFragment : Fragment() {
     private var pendingAutoStartBtName: String? = null
     private var pendingAutoStartBtMac: String? = null
     private var pendingAutoStartOnUsb: Boolean? = null
+    private var pendingEnableRotary: Boolean? = null
     private var pendingShowFpsCounter: Boolean? = null
     private var pendingScreenOrientation: Settings.ScreenOrientation? = null
     private var pendingAppLanguage: String? = null
@@ -127,6 +128,7 @@ class SettingsFragment : Fragment() {
         pendingAutoStartBtName = settings.autoStartBluetoothDeviceName
         pendingAutoStartBtMac = settings.autoStartBluetoothDeviceMac
         pendingAutoStartOnUsb = settings.autoStartOnUsb
+        pendingEnableRotary = settings.enableRotary
         pendingShowFpsCounter = settings.showFpsCounter
         pendingScreenOrientation = settings.screenOrientation
         pendingAppLanguage = settings.appLanguage
@@ -245,6 +247,7 @@ class SettingsFragment : Fragment() {
         pendingAutoStartBtName?.let { settings.autoStartBluetoothDeviceName = it }
         pendingAutoStartBtMac?.let { settings.autoStartBluetoothDeviceMac = it }
         pendingAutoStartOnUsb?.let { settings.autoStartOnUsb = it }
+        pendingEnableRotary?.let { settings.enableRotary = it }
         pendingShowFpsCounter?.let { settings.showFpsCounter = it }
         pendingScreenOrientation?.let { settings.screenOrientation = it }
 
@@ -331,6 +334,7 @@ class SettingsFragment : Fragment() {
                         pendingUseNativeSsl != settings.useNativeSsl ||
                         pendingAutoStartBtMac != settings.autoStartBluetoothDeviceMac ||
                         pendingAutoStartOnUsb != settings.autoStartOnUsb ||
+                        pendingEnableRotary != settings.enableRotary ||
                         pendingShowFpsCounter != settings.showFpsCounter ||
                         pendingScreenOrientation != settings.screenOrientation ||
                         pendingAppLanguage != settings.appLanguage ||
@@ -352,6 +356,7 @@ class SettingsFragment : Fragment() {
                           pendingDpi != settings.dpiPixelDensity ||
                           pendingForceSoftware != settings.forceSoftwareDecoding ||
                           pendingRightHandDrive != settings.rightHandDrive ||
+                          pendingEnableRotary != settings.enableRotary ||
                           pendingEnableAudioSink != settings.enableAudioSink ||
                           pendingUseAacAudio != settings.useAacAudio ||
                           pendingUseNativeSsl != settings.useNativeSsl ||
@@ -415,19 +420,6 @@ class SettingsFragment : Fragment() {
                         updateSettingsList()
                     }
                     .show()
-            }
-        ))
-
-        items.add(SettingItem.SettingEntry(
-            stableId = "keymap",
-            nameResId = R.string.keymap,
-            value = getString(R.string.keymap_description),
-            onClick = { _ ->
-                try {
-                    findNavController().navigate(R.id.action_settingsFragment_to_keymapFragment)
-                } catch (e: Exception) {
-                    // Failover
-                }
             }
         ))
 
@@ -604,10 +596,19 @@ class SettingsFragment : Fragment() {
                 MaterialAlertDialogBuilder(requireContext(), R.style.DarkAlertDialog)
                     .setTitle(R.string.start_in_fullscreen_mode)
                     .setSingleChoiceItems(modes, pendingFullscreenMode?.value ?: 0) { dialog, which ->
-                        pendingFullscreenMode = Settings.FullscreenMode.fromInt(which)
+                        val newMode = Settings.FullscreenMode.fromInt(which) ?: Settings.FullscreenMode.NONE
+                        pendingFullscreenMode = newMode
+                        
+                        // PERSIST IMMEDIATELY (Rescue Mode)
+                        settings.fullscreenMode = newMode
+                        settings.commit()
+                        
                         checkChanges()
                         dialog.dismiss()
                         updateSettingsList()
+                        
+                        // Apply immediately to current UI
+                        requireActivity().recreate()
                     }
                     .setNegativeButton(R.string.cancel, null)
                     .show()
@@ -721,6 +722,34 @@ class SettingsFragment : Fragment() {
                         updateSettingsList()
                     }
                     .show()
+            }
+        ))
+
+        // --- Input Settings ---
+        items.add(SettingItem.CategoryHeader("input", R.string.category_input))
+
+        items.add(SettingItem.SettingEntry(
+            stableId = "keymap",
+            nameResId = R.string.keymap,
+            value = getString(R.string.keymap_description),
+            onClick = { _ ->
+                try {
+                    findNavController().navigate(R.id.action_settingsFragment_to_keymapFragment)
+                } catch (e: Exception) {
+                    // Failover
+                }
+            }
+        ))
+
+        items.add(SettingItem.ToggleSettingEntry(
+            stableId = "enableRotary",
+            nameResId = R.string.enable_rotary,
+            descriptionResId = R.string.enable_rotary_description,
+            isChecked = pendingEnableRotary ?: false,
+            onCheckedChanged = { isChecked ->
+                pendingEnableRotary = isChecked
+                checkChanges()
+                updateSettingsList()
             }
         ))
 
@@ -1042,11 +1071,12 @@ class SettingsFragment : Fragment() {
                 val r = inputRight.text.toString().toIntOrNull() ?: 0
                 val b = inputBottom.text.toString().toIntOrNull() ?: 0
                 
-                // PERSIST IMMEDIATELY to prevent revert on focus change
+                // PERSIST IMMEDIATELY (Rescue Mode)
                 settings.insetLeft = l
                 settings.insetTop = t
                 settings.insetRight = r
                 settings.insetBottom = b
+                settings.commit()
                 
                 // Update pending to keep UI in sync
                 pendingInsetLeft = l
@@ -1057,6 +1087,9 @@ class SettingsFragment : Fragment() {
                 checkChanges()
                 updateSettingsList()
                 dialog.dismiss()
+                
+                // Refresh activity to apply padding immediately
+                requireActivity().recreate()
             }
             .setNegativeButton(android.R.string.cancel) { dialog, _ ->
                 // Revert Preview immediately
