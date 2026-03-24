@@ -341,6 +341,11 @@ class CommManager(
         _connectionState.value = ConnectionState.Disconnected(isClean, isUserExit = wasUserExit)
         // Transport already quit on its own — no ByeByeRequest needed (connection is dead).
         _disconnectJob = _scope.launch { doDisconnect(sendByeBye = false) }
+        if (settings.killOnDisconnect) {
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                android.os.Process.killProcess(android.os.Process.myPid())
+            }, 500)
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -382,8 +387,13 @@ class CommManager(
     fun disconnect(sendByeBye: Boolean = true) {
         if (_connectionState.value is ConnectionState.Disconnected) return
 
-        _connectionState.value = ConnectionState.Disconnected()
+        _connectionState.value = ConnectionState.Disconnected(isUserExit = true)
         _disconnectJob = _scope.launch { doDisconnect(sendByeBye) }
+        if (settings.killOnDisconnect) {
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                android.os.Process.killProcess(android.os.Process.myPid())
+            }, 500)
+        }
     }
 
     /**
