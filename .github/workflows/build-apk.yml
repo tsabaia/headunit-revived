@@ -1,4 +1,4 @@
-name: Build APK (Native-AA)
+name: Gerador de APK
 
 on:
   workflow_dispatch: # É isso que permite o acionamento manual
@@ -21,12 +21,10 @@ jobs:
       run: chmod +x gradlew
 
     - name: Gerar o APK (Debug)
-      run: ./gradlew assembleDebug
+      run: ./gradlew assembleGithubDebug
 
-    - name: Fazer Upload do APK
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: headunit-native-aa-apk
-        # Este caminho pega o APK gerado. Pode variar levemente dependendo do projeto, 
-        # mas este é o padrão para 99% dos apps Android.
-        path: app/build/outputs/apk/debug/**/*.apk
+        name: app-github-debug
+        path: app/build/outputs/apk/**/*.apk
