@@ -53,6 +53,7 @@
     <string name="gles_required_message">Monochrome modus heeft GLES-rendering nodig om een grijstintenfilter toe te passen op de video-uitvoer. GLES inschakelen?</string>
     <string name="enable_gles">GLES inschakelen</string>
     <string name="category_navigation">Navigatie</string>
+    <string name="category_wireless">Draadloze verbinding</string>
 
     <string name="reconnection_required_title">Opnieuw verbinden vereist</string>
     <string name="reconnection_required_message">Het apparaat staat in de wachtstand. Koppel de USB-kabel los en sluit deze opnieuw aan om Android Auto opnieuw te starten.</string>
@@ -180,6 +181,7 @@
         <item>Handmatig (lijst)</item>
         <item>Automatisch zoeken (Headunit Server)</item>
         <item>Draadloze helper (wachten op telefoon)</item>
+        <item>Native Android Auto</item>
     </string-array>
     <string name="auto_connect_last_session">Auto-Connect laatste Sessie</string>
     <string name="auto_connect_last_session_description">Automatisch opnieuw verbinding maken met het laatst gebruikte apparaat bij het opstarten van de app.</string>
@@ -376,6 +378,7 @@
     <string name="kill_on_disconnect_screen_on_warning">U hebt \"Starten bij scherm aan\" ingeschakeld. Deze instelling opent de app telkens wanneer het scherm wordt ingeschakeld. Gecombineerd met sluiten bij ontkoppeling zal de app na ontkoppeling sluiten, maar onmiddellijk weer openen wanneer het scherm opnieuw wordt ingeschakeld, waardoor een herstartlus ontstaat.</string>
     <string name="kill_on_disconnect_conflicts_disabled">Conflicterende instellingen zijn uitgeschakeld</string>
     <string name="wifi_disabled_info">Info: Wi-Fi is uitgeschakeld.</string>
+    <string name="bt_not_enabled">Info: Bluetooth is uitgeschakeld.</string>
 
     <!-- Vehicle Info Settings -->
     <string name="vehicle_info_settings">Voertuiginformatie</string>
@@ -406,7 +409,13 @@
     <string name="hotspot_warning_message">Deze functie gebruikt reflectie en werkt mogelijk niet op alle apparaten. Mogelijk moet u handmatig de toestemming \"Systeeminstellingen wijzigen\" verlenen.</string>
     <string name="hotspot_permission_title">Toestemming vereist</string>
     <string name="hotspot_permission_message">De hotspotfunctie vereist de toestemming \"Systeeminstellingen wijzigen\". Schakel deze in op het volgende scherm.</string>
+
+    <string name="not_supported_nativeaa">Native Draadloos lijkt niet ondersteund</string>
+    <string name="not_supported_nativeaa_desc">Je apparaat ondersteunt mogelijk de vereiste Bluetooth- of Wi-Fi-functies voor Native Draadloos niet. Je kunt het toch proberen, maar als het mislukt, gebruik dan de \"Wireless Helper\"- of \"Auto (Headunit Server)\"-modus.</string>
+    <string name="shortcut_selfmode_title">Self Mode</string>
+    <string name="shortcut_selfmode_desc">Start Android Auto op dit apparaat</string>
     <string name="wait_for_wifi">Wacht op WiFi voor WiFi Direct</string>
     <string name="wait_for_wifi_description">Wacht bij het opstarten tot WiFi verbonden is voordat WiFi Direct wordt gestart. Handig als uw headunit een paar seconden nodig heeft om verbinding te maken met WiFi na het opstarten.</string>
     <string name="wait_for_wifi_timeout">WiFi wachttijd</string>
+    <string name="wireless_24ghz_warning">Opmerking: Draadloze Android Auto op 2,4 GHz-apparaten kan leiden tot vertragingen, haperingen en verbrekingen. Als u problemen ondervindt, test dan via USB om te bevestigen of het een netwerkbeperking is.</string>
 </resources>

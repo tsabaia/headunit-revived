@@ -20,6 +20,10 @@ object HeadUnitScreenConfig {
     // Flag to determine if the projection should stretch and ignore aspect ratio
     private var stretchToFill: Boolean = false 
     
+    // Forced scale for older devices (Legacy fix)
+    var forcedScale: Boolean = false
+        private set
+
     var negotiatedResolutionType: Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType? = null
     private lateinit var currentSettings: Settings // Store settings instance
 
@@ -41,6 +45,8 @@ object HeadUnitScreenConfig {
     fun init(context: Context, displayMetrics: DisplayMetrics, settings: Settings) {
         // Read user preference for stretching the screen from the app's Settings
         stretchToFill = settings.stretchToFill
+        // Only allow forcedScale if viewMode is SURFACE (0)
+        forcedScale = settings.forcedScale && settings.viewMode == Settings.ViewMode.SURFACE
 
         val screenWidth: Int
         val screenHeight: Int
@@ -98,77 +104,74 @@ object HeadUnitScreenConfig {
         screenHeightPx = realScreenHeightPx - systemInsetTop - systemInsetBottom
 
         if (screenWidthPx <= 0 || screenHeightPx <= 0) {
-            // Fallback to raw if calculation fails or leads to 0
             screenWidthPx = realScreenWidthPx
             screenHeightPx = realScreenHeightPx
         }
-        
-        AppLog.i("CarScreen: usable width: $screenWidthPx height: $screenHeightPx (Raw: ${realScreenWidthPx}x${realScreenHeightPx}, Insets: L$systemInsetLeft T$systemInsetTop R$systemInsetRight B$systemInsetBottom)")
-
-        // check if small screen
-        if (screenHeightPx > screenWidthPx) { // Portrait mode
-            if (screenWidthPx > 1080 || screenHeightPx > 1920) {
-                isSmallScreen = false
-            }
-        } else {
-            if (screenWidthPx > 1920 || screenHeightPx > 1080) {
-                isSmallScreen = false
-            }
-        }
 
         val selectedResolution = Settings.Resolution.fromId(currentSettings.resolutionId)
+        val isPortraitDisplay = screenHeightPx > screenWidthPx
 
-        // Determine negotiatedResolutionType based on physical pixels if AUTO was selected
+        // 1. Determine base negotiated resolution
         if (selectedResolution == Settings.Resolution.AUTO) {
-            if (screenHeightPx > screenWidthPx) { // Portrait mode
-                if (screenWidthPx > 720 || screenHeightPx > 1280) {
-                    negotiatedResolutionType = Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1080x1920
+            if (isPortraitDisplay) {
+                negotiatedResolutionType = if (screenWidthPx > 720 || screenHeightPx > 1280) {
+                    Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1080x1920
                 } else {
-                    negotiatedResolutionType = Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._720x1280
+                    Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._720x1280
                 }
-            } else { // Landscape mode
-                if (screenWidthPx <= 800 && screenHeightPx <= 480) {
-                    negotiatedResolutionType = Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._800x480
-                } else if ((screenWidthPx >= 2560 || screenHeightPx >= 1440) && com.andrerinas.headunitrevived.decoder.VideoDecoder.isHevcSupported() && Build.VERSION.SDK_INT >= 24) {
-                    negotiatedResolutionType = Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._2560x1440
-                } else if (screenWidthPx > 1280 || screenHeightPx > 720) {
-                    negotiatedResolutionType = Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1920x1080
-                } else {
-                    negotiatedResolutionType = Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1280x720
+            } else {
+                negotiatedResolutionType = when {
+                    screenWidthPx <= 800 && screenHeightPx <= 480 -> Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._800x480
+                    (screenWidthPx >= 3840 || screenHeightPx >= 2160) && com.andrerinas.headunitrevived.decoder.VideoDecoder.isHevcSupported() && Build.VERSION.SDK_INT >= 24 -> 
+                        Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._3840x2160
+                    (screenWidthPx >= 2560 || screenHeightPx >= 1440) && com.andrerinas.headunitrevived.decoder.VideoDecoder.isHevcSupported() && Build.VERSION.SDK_INT >= 24 -> 
+                        Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._2560x1440
+                    screenWidthPx > 1280 || screenHeightPx > 720 -> Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1920x1080
+                    else -> Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1280x720
                 }
             }
         } else {
-            // Manual selection: Adapt to orientation
-            if (screenHeightPx > screenWidthPx) { // Portrait
-                negotiatedResolutionType = when (selectedResolution) {
-                    Settings.Resolution._800x480 -> Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._720x1280 // Upgrade to 720p Port
+            // Manual selection: Map to correct orientation
+            val codec = selectedResolution?.codec ?: Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._800x480
+            negotiatedResolutionType = if (isPortraitDisplay) {
+                when (selectedResolution) {
+                    Settings.Resolution._800x480 -> Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._720x1280
                     Settings.Resolution._1280x720 -> Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._720x1280
                     Settings.Resolution._1920x1080 -> Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1080x1920
                     Settings.Resolution._2560x1440 -> Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1440x2560
-                    else -> selectedResolution?.codec
+                    Settings.Resolution._3840x2160 -> Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._2160x3840
+                    else -> codec
                 }
             } else {
-                negotiatedResolutionType = selectedResolution?.codec
+                codec
             }
         }
 
+        // 2. Perform scaling calculations (now safe because negotiatedResolutionType is set)
+        AppLog.i("CarScreen: usable area ${screenWidthPx}x${screenHeightPx}, using $negotiatedResolutionType")
+
+        if (screenHeightPx > screenWidthPx) {
+            isSmallScreen = screenWidthPx <= 1080 && screenHeightPx <= 1920
+        } else {
+            isSmallScreen = screenWidthPx <= 1920 && screenHeightPx <= 1080
+        }
+
+        scaleFactor = 1.0f
         if (!isSmallScreen) {
             val sWidth = screenWidthPx.toFloat()
             val sHeight = screenHeightPx.toFloat()
-            if (getNegotiatedWidth() > 0 && getNegotiatedHeight() > 0) { // Ensure division by zero is avoided
+            if (getNegotiatedWidth() > 0 && getNegotiatedHeight() > 0) {
                  if (sWidth / sHeight < getAspectRatio()) {
                     isPortraitScaled = true
-                    scaleFactor = (sHeight * 1.0f) / getNegotiatedHeight().toFloat()
+                    scaleFactor = sHeight / getNegotiatedHeight().toFloat()
                 } else {
                     isPortraitScaled = false
-                    scaleFactor = (sWidth * 1.0f) / getNegotiatedWidth().toFloat()
+                    scaleFactor = sWidth / getNegotiatedWidth().toFloat()
                 }
-            } else {
-                scaleFactor = 1.0f // Default if negotiated resolution is not valid
             }
         }
-        AppLog.i("CarScreen isSmallScreen: $isSmallScreen, scaleFactor: ${scaleFactor}")
-        AppLog.i("CarScreen using: $negotiatedResolutionType, number: ${negotiatedResolutionType?.number}, scales: scaleX: ${getScaleX()}, scaleY: ${getScaleY()}")
+        
+        AppLog.i("CarScreen isSmallScreen: $isSmallScreen, scaleFactor: $scaleFactor, scales: scaleX: ${getScaleX()}, scaleY: ${getScaleY()}")
     }
 
     fun getAdjustedHeight(): Int {
@@ -208,6 +211,10 @@ object HeadUnitScreenConfig {
     }
 
     fun getScaleX(): Float {
+        if (forcedScale) {
+            return 1.0f
+        }
+
         if (getNegotiatedWidth() > screenWidthPx) {
             return divideOrOne(getNegotiatedWidth().toFloat(), screenWidthPx.toFloat())
         }
@@ -217,7 +224,11 @@ object HeadUnitScreenConfig {
         return 1.0f
     }
         // Stretch option PR #259
-        fun getScaleY(): Float {
+    fun getScaleY(): Float {
+        if (forcedScale) {
+            return 1.0f
+        }
+
         if (getNegotiatedHeight() > screenHeightPx) {
             return if (stretchToFill) {
                 // Before PR #233 Fix scaler Y
@@ -233,14 +244,6 @@ object HeadUnitScreenConfig {
         }
 
         return divideOrOne((screenWidthPx.toFloat() / screenHeightPx.toFloat()), getAspectRatio())
-    }
-
-    fun getDensityWidth(): Int {
-        return (screenWidthPx / density).roundToInt()
-    }
-
-    fun getDensityHeight(): Int {
-        return (screenHeightPx / density).roundToInt()
     }
 
     fun getDensityDpi(): Int {
@@ -259,4 +262,7 @@ object HeadUnitScreenConfig {
         val fIntValue = (getNegotiatedHeight() - getHeightMargin()).toFloat() / screenHeightPx.toFloat()
         return fIntValue
     }
+
+    fun getUsableWidth(): Int = screenWidthPx
+    fun getUsableHeight(): Int = screenHeightPx
 }

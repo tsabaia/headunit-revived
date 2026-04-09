@@ -75,12 +75,8 @@ internal class AapControlMedia(
 
         val configResponse = Media.Config.newBuilder().apply {
             status = Media.Config.ConfigStatus.HEADUNIT
-            // Use higher maxUnacked for audio to prevent stuttering/drops
-            maxUnacked = if (Channel.isAudio(channel)) {
-                3
-            } else {
-                1
-            }
+            // Use 30 for maxUnacked on wireless to avoid stalls due to jitter, 16 for USB.
+            maxUnacked = if (aapTransport.isWireless) 30 else 16
             
             addConfigurationIndices(0)
         }.build()
@@ -90,6 +86,15 @@ internal class AapControlMedia(
 
         if (channel == Channel.ID_VID) {
             aapTransport.gainVideoFocus()
+        }
+
+        // Pushing AudioFocusNotification
+        if (Channel.isAudio(channel)) {
+            val focusNotification = Control.AudioFocusNotification.newBuilder()
+                .setFocusState(Control.AudioFocusNotification.AudioFocusStateType.STATE_GAIN)
+                .setUnsolicited(true)
+                .build()
+            aapTransport.send(AapMessage(Channel.ID_CTR, Control.ControlMsgType.MESSAGE_AUDIO_FOCUS_NOTIFICATION_VALUE, focusNotification))
         }
 
         return 0

@@ -98,6 +98,9 @@ class AapTransport(
     private var connection: AccessoryConnection? = null
     private var aapRead: AapRead? = null
     var isQuittingAllowed: Boolean = false
+    
+    val isWireless: Boolean
+        get() = connection is com.andrerinas.headunitrevived.connection.SocketAccessoryConnection
     var ignoreNextStopRequest: Boolean = false
     /** Set by [AapControl] when VIDEO_FOCUS_NATIVE triggers a stop (user tapped Exit). */
     @Volatile var wasUserExit: Boolean = false
@@ -141,7 +144,9 @@ class AapTransport(
     init {
         micRecorder.listener = this
         aapAudio = AapAudio(audioDecoder, audioManager, settings)
-        aapVideo = AapVideo(videoDecoder, settings)
+        aapVideo = AapVideo(videoDecoder, settings) {
+            send(com.andrerinas.headunitrevived.aap.protocol.messages.VideoFocusEvent(gain = true, unsolicited = true))
+        }
     }
 
     internal fun startSensor(type: Int) {
@@ -186,9 +191,9 @@ class AapTransport(
         micRecorder.listener = null
         pollThread?.quit()
         sendThread?.quit()
-        
-        try {
-            // Don't join the poll thread from within itself — it would block for the full
+        aapAudio.releaseAllFocus()
+
+        try {            // Don't join the poll thread from within itself — it would block for the full
             // timeout since the thread can't finish while it's waiting for itself to finish.
             if (Thread.currentThread() != pollThread) pollThread?.join(1000)
             sendThread?.join(1000)

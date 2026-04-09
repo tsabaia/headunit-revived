@@ -54,6 +54,7 @@
     <string name="gles_required_message">O modo monocromático precisa da renderização GLES para aplicar um filtro de escala de cinza na saída de vídeo. Ativar GLES?</string>
     <string name="enable_gles">Ativar GLES</string>
     <string name="category_navigation">Navegação</string>
+    <string name="category_wireless">Conexão sem fio</string>
 
     <string name="reconnection_required_title">Reconexão necessária</string>
     <string name="reconnection_required_message">O dispositivo está em espera. Desconecte e reconecte o cabo USB para reiniciar o Android Auto.</string>
@@ -181,6 +182,7 @@
         <item>Manual (Lista)</item>
         <item>Busca automática (Headunit Server)</item>
         <item>Auxiliar sem fio (Aguardando telefone)</item>
+        <item>Native Android Auto</item>
     </string-array>
     <string name="auto_connect_last_session">Conectar automaticamente à última sessão</string>
     <string name="auto_connect_last_session_description">Reconecta automaticamente ao último dispositivo usado ao iniciar o app</string>
@@ -377,6 +379,7 @@
     <string name="kill_on_disconnect_screen_on_warning">Você tem \"Iniciar ao ligar a tela\" ativado. Esta configuração abre o app toda vez que a tela é ligada. Combinado com fechar ao desconectar, o app será fechado após a desconexão, mas reabrirá imediatamente quando a tela ligar novamente, criando um loop de reinício.</string>
     <string name="kill_on_disconnect_conflicts_disabled">As configurações conflitantes foram desativadas</string>
     <string name="wifi_disabled_info">Info: O Wi-Fi está desativado.</string>
+    <string name="bt_not_enabled">Info: O Bluetooth está desativado.</string>
 
     <!-- Vehicle Info Settings -->
     <string name="vehicle_info_settings">Informações do veículo</string>
@@ -407,7 +410,13 @@
     <string name="hotspot_warning_message">Este recurso usa reflexão e pode não funcionar em todos os dispositivos. Pode ser necessário conceder manualmente a permissão \"Modificar configurações do sistema\".</string>
     <string name="hotspot_permission_title">Permissão necessária</string>
     <string name="hotspot_permission_message">O recurso de ponto de acesso requer a permissão \"Modificar configurações do sistema\". Por favor, ative-a na próxima tela.</string>
+
+    <string name="not_supported_nativeaa">O modo Sem Fio Nativo parece não ser suportado</string>
+    <string name="not_supported_nativeaa_desc">Seu dispositivo pode não suportar os recursos de Bluetooth ou Wi-Fi necessários para o modo Sem Fio Nativo. Você pode tentar de qualquer maneira, mas se falhar, use o modo \"Wireless Helper\" ou \"Auto (Headunit Server)\".</string>
+    <string name="shortcut_selfmode_title">Modo Próprio (Self Mode)</string>
+    <string name="shortcut_selfmode_desc">Iniciar Android Auto neste dispositivo</string>
     <string name="wait_for_wifi">Aguardar WiFi antes do WiFi Direct</string>
     <string name="wait_for_wifi_description">Ao iniciar, aguarda a conexão WiFi antes de iniciar o WiFi Direct. Útil se seu headunit demora alguns segundos para conectar ao WiFi após ligar.</string>
     <string name="wait_for_wifi_timeout">Tempo limite de espera WiFi</string>
+    <string name="wireless_24ghz_warning">Nota: O Android Auto sem fio em dispositivos de 2,4 GHz pode causar atrasos, travamentos e desconexões. Se você tiver problemas, teste via USB para confirmar se é uma limitação da rede.</string>
 </resources>

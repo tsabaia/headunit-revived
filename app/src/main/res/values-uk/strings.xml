@@ -54,6 +54,7 @@
     <string name="gles_required_message">Монохромний режим потребує рендерингу GLES для застосування фільтра відтінків сірого до відеовиходу. Увімкнути GLES?</string>
     <string name="enable_gles">Увімкнути GLES</string>
     <string name="category_navigation">Навігація</string>
+    <string name="category_wireless">Бездротове підключення</string>
 
     <string name="reconnection_required_title">Потрібне перепідключення</string>
     <string name="reconnection_required_message">Пристрій у стані очікування. Відʼєднайте та знову підключіть USB-кабель, щоб перезапустити Android Auto.</string>
@@ -181,6 +182,7 @@
         <item>Вручну (список)</item>
         <item>Автопошук (Headunit Server)</item>
         <item>Бездротовий помічник (очікування телефону)</item>
+        <item>Native Android Auto</item>
     </string-array>
     <string name="auto_connect_last_session">Автоматично підключатися до останньої сесії</string>
     <string name="auto_connect_last_session_description">Автоматично підключатися до останнього використаного пристрою під час запуску програми</string>
@@ -377,6 +379,7 @@
     <string name="kill_on_disconnect_screen_on_warning">У вас увімкнено \"Запуск при увімкненні екрана\". Це налаштування відкриває додаток щоразу, коли вмикається екран. У поєднанні із закриттям при від\'єднанні додаток закриється після від\'єднання, але одразу відкриється знову, коли екран увімкнеться, створюючи цикл перезапуску.</string>
     <string name="kill_on_disconnect_conflicts_disabled">Конфліктуючі налаштування були вимкнені</string>
     <string name="wifi_disabled_info">Інфо: Wi-Fi вимкнено.</string>
+    <string name="bt_not_enabled">Інфо: Bluetooth вимкнено.</string>
 
     <!-- Vehicle Info Settings -->
     <string name="vehicle_info_settings">Інформація про транспортний засіб</string>
@@ -407,7 +410,13 @@
     <string name="hotspot_warning_message">Ця функція використовує рефлексію і може не працювати на всіх пристроях. Можливо, потрібно вручну надати дозвіл \"Зміна системних налаштувань\".</string>
     <string name="hotspot_permission_title">Потрібен дозвіл</string>
     <string name="hotspot_permission_message">Функція точки доступу потребує дозволу \"Зміна системних налаштувань\". Будь ласка, увімкніть його на наступному екрані.</string>
+
+    <string name="not_supported_nativeaa">Нативний бездротовий режим, схоже, не підтримується</string>
+    <string name="not_supported_nativeaa_desc">Ваш пристрій може не підтримувати необхідні функції Bluetooth або Wi-Fi для нативного бездротового режиму. Ви можете спробувати в будь-якому випадку, але якщо не вдасться, використовуйте режим «Wireless Helper» або «Auto (Headunit Server)».</string>
+    <string name="shortcut_selfmode_title">Self Mode</string>
+    <string name="shortcut_selfmode_desc">Запустити Android Auto на цьому пристрої</string>
     <string name="wait_for_wifi">Чекати WiFi перед WiFi Direct</string>
     <string name="wait_for_wifi_description">При запуску чекати підключення WiFi перед запуском WiFi Direct. Корисно, якщо вашому головному пристрою потрібно кілька секунд для підключення до WiFi після увімкнення.</string>
     <string name="wait_for_wifi_timeout">Тайм-аут очікування WiFi</string>
+    <string name="wireless_24ghz_warning">Примітка: Бездротовий Android Auto на пристроях 2,4 ГГц може призводити до затримок, ривків і розривів з\'єднання. Якщо виникли проблеми, перевірте роботу через USB, щоб підтвердити обмеження мережі.</string>
 </resources>

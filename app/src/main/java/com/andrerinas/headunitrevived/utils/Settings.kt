@@ -59,6 +59,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("stretch_to_fill", true)
         set(value) { prefs.edit().putBoolean("stretch_to_fill", value).apply() }
 
+    // Forced scale for older devices (SurfaceView fix)
+    var forcedScale: Boolean
+        get() = prefs.getBoolean("forced_scale", false)
+        set(value) { prefs.edit().putBoolean("forced_scale", value).apply() }
+
     var micSampleRate: Int
         get() = prefs.getInt("mic-sample-rate", 16000)
         set(sampleRate) {
@@ -142,6 +147,18 @@ class Settings(context: Context) {
         get() = prefs.getInt("dpi-pixel-density", 0) // Default 0 for Auto
         set(value) {
             prefs.edit().putInt("dpi-pixel-density", value).apply()
+        }
+
+    var fakeSpeed: Boolean
+        get() = prefs.getBoolean("fake_speed", true)
+        set(value) {
+            prefs.edit().putBoolean("fake_speed", value).apply()
+        }
+
+    var gestureHintShown: Boolean
+        get() = prefs.getBoolean("gesture_hint_shown", false)
+        set(value) {
+            prefs.edit().putBoolean("gesture_hint_shown", value).apply()
         }
 
     // Custom Insets (Screen Margins)
@@ -234,16 +251,20 @@ class Settings(context: Context) {
         get() = prefs.getString("head-unit-model", "Desktop Head Unit")!!
         set(value) { prefs.edit().putString("head-unit-model", value).apply() }
 
-    // 0 = Manual, 1 = Auto (Headunit Server), 2 = Helper (Wifi Launcher)
+    // 0 = Manual, 1 = Auto (Headunit Server), 2 = Helper (Wifi Launcher), 3 = Native AA
     var wifiConnectionMode: Int
         get() {
-            // Migration: Check if old boolean exists
+            // Migration: Check if old helper boolean exists
             if (prefs.contains("wifi-launcher-mode")) {
                 val old = prefs.getBoolean("wifi-launcher-mode", false)
-                val newMode = if (old) 2 else 1 // old true -> Helper, old false -> Auto (Default)
-                // Save new preference and remove old one
+                val newMode = if (old) 2 else 1
                 prefs.edit().putInt("wifi-connection-mode", newMode).remove("wifi-launcher-mode").apply()
                 return newMode
+            }
+            // Migration: Check if native-aa-wireless was true
+            if (prefs.getBoolean("native-aa-wireless", false)) {
+                prefs.edit().putInt("wifi-connection-mode", 3).remove("native-aa-wireless").apply()
+                return 3
             }
             return prefs.getInt("wifi-connection-mode", 1) // Default 1 (Auto)
         }
@@ -389,15 +410,9 @@ class Settings(context: Context) {
         _800x480(1, "480p", 800, 480, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._800x480),
         _1280x720(2, "720p", 1280, 720, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1280x720),
         _1920x1080(3, "1080p", 1920, 1080, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1920x1080),
-        _2560x1440(4, "1440p", 2560, 1440, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._2560x1440);
+        _2560x1440(4, "1440p (2K)", 2560, 1440, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._2560x1440),
+        _3840x2160(5, "2160p (4K)", 3840, 2160, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._3840x2160);
 
-        // TODO: Portrait and higher Resolutions later
-        /*        _2560x1440(4, "2560x1440 (Experimental)", 2560,1440, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._2560x1440),
-        _3840x2160(5, "3840x2160 (Experimental)", 3840,2160, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._3840x2160),
-        _720x1280(6, "720x1280 (Portrait)", 720,1280, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._720x1280),
-        _1080x1920(7, "1080x1920 (Portrait)", 1080,1920, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1080x1920),
-        _1440x2560(8, "1440x2560 (Portrait)", 1440,2560, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._1440x2560),
-        _2160x3840(9, "2160x3840 (Portrait)", 2160,3840, Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._2160x3840);*/
         companion object {
             private val map = values().associateBy(Resolution::id)
             fun fromId(id: Int) = map[id]
@@ -623,7 +638,8 @@ class Settings(context: Context) {
     enum class FullscreenMode(val value: Int) {
         NONE(0),
         IMMERSIVE(1),
-        STATUS_ONLY(2);
+        STATUS_ONLY(2),
+        IMMERSIVE_WITH_NOTCH(3);
 
         companion object {
             private val map = values().associateBy(FullscreenMode::value)
@@ -670,7 +686,7 @@ class Settings(context: Context) {
     var appTheme: AppTheme
         get() {
             val value = prefs.getInt("app-theme", 0)
-            return AppTheme.fromInt(value)
+            return AppTheme.fromInt(value) ?: AppTheme.AUTOMATIC
         }
         set(theme) {
             prefs.edit().putInt("app-theme", theme.value).apply()

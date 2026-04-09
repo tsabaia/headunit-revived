@@ -58,6 +58,7 @@
     <string name="gles_required_message">Monochrome mode needs GLES rendering to apply a grayscale filter on the video output. Enable GLES?</string>
     <string name="enable_gles">Enable GLES</string>
     <string name="category_navigation">Navigation</string>
+    <string name="category_wireless">Wireless Connection</string>
 
     <string name="reconnection_required_title">Reconnection Required</string>
     <string name="reconnection_required_message">The device is in a waiting state. Please unplug and re-plug the USB cable to start Android Auto again.</string>
@@ -98,8 +99,10 @@
     <string name="start_in_fullscreen_mode">Screen mode</string>
     <string name="start_in_fullscreen_mode_description">Choose how system bars (status and navigation) should be handled.</string>
     <string name="fullscreen_none">Normal (All bars visible)</string>
-    <string name="fullscreen_immersive">Immersive (All bars hidden)</string>
+    <string name="fullscreen_immersive">Immersive (Overlay Notch)</string>
     <string name="fullscreen_status_only">Hide status bar only</string>
+    <string name="fullscreen_immersive_avoid_notch">Immersive (Avoid Notch)</string>
+    <string name="fullscreen_immersive_avoid_notch_desc">Hides all bars and adds padding to prevent the projection from being covered by the Notch/Cutout.</string>
 
     <string name="usb_status">USB Status: %s</string>
     <string name="projection_status">Projection Status: %s</string>
@@ -176,6 +179,7 @@
     <string name="open_settings">Settings</string>
     <string name="right_hand_drive">Right-hand drive</string>
     <string name="right_hand_drive_description">Position UI for right-side driving</string>
+    <string name="wireless_connection_settings">Wireless Connection</string>
     <string name="category_graphic">Graphic</string>
     <string name="custom_insets">Custom Insets (Margins)</string>
     <string name="inset_top">Top</string>
@@ -194,6 +198,7 @@
         <item>Manual (List)</item>
         <item>Auto-search (Headunit Server)</item>
         <item>Wireless Helper (Waiting for Phone)</item>
+        <item>Native Android Auto (Official Handshake)</item>
     </string-array>
     <string name="auto_connect_last_session">Auto-Connect Last Session</string>
     <string name="auto_connect_last_session_description">Automatically reconnect to the last used device on app startup</string>
@@ -217,6 +222,8 @@
     <string name="enable">Enable</string>
     <string name="pref_stretch_screen_title">Stretch to fill screen</string>
     <string name="pref_stretch_screen_summary">Ignores aspect ratio to fill the entire display (removes black bars)</string>
+    <string name="forced_scale">Forced Scale (Legacy Fix)</string>
+    <string name="forced_scale_description">Corrects scaling issues on some older devices using SurfaceView. Only use if the image looks distorted or shifted.</string>
 
 
     <!-- Audio Settings -->
@@ -304,7 +311,9 @@
     <string name="notification_service_running">Headunit Revived is running</string>
     <string name="notification_projection_active">Android Auto is projected</string>
     <string name="shortcut_connect_title">Connect</string>
-    <string name="shortcut_connect_desc">Connect to last known device</string>
+    <string name="shortcut_connect_desc">Auto-connect to last phone</string>
+    <string name="shortcut_selfmode_title">Self Mode</string>
+    <string name="shortcut_selfmode_desc">Start Android Auto on this device</string>
     <string name="shortcut_disconnect_title">Disconnect</string>
     <string name="shortcut_disconnect_desc">End current session</string>
     <string name="shortcut_exit_title">Exit App</string>
@@ -383,6 +392,7 @@
     <string name="kill_on_disconnect_screen_on_warning">You have \"Start on screen on\" enabled. This setting opens the app every time the screen turns on. Combined with closing on disconnect, the app will close after disconnection but reopen immediately when the screen turns on again, creating a restart loop.</string>
 
     <string name="wifi_disabled_info">Info: Wi-Fi is disabled.</string>
+    <string name="bt_not_enabled">Bluetooth is disabled</string>
 
     <!-- Vehicle Info Settings -->
     <string name="vehicle_info_settings">Vehicle information</string>
@@ -415,7 +425,20 @@
     <string name="hotspot_permission_title">Permission Required</string>
     <string name="hotspot_permission_message">The hotspot feature requires the \"Modify system settings\" permission. Please enable it in the next screen.</string>
 
+    <string name="supported_nativeaa">Enhanced Wireless Support</string>
+    <string name="supported_nativeaa_desc">Great news! Your device supports \"Native Wireless\" mode, which provides a more seamless Android Auto experience. \n\nTo enable this, we need to refresh your Bluetooth cache. Please: \n1. Remove the existing pairing on your phone \n2. Click OK to restart Bluetooth \n3. Re-pair your phone \n\nWould you like to switch to Native AA mode now?</string>
+    <string name="not_supported_nativeaa">Native Wireless seems not supported</string>
+    <string name="not_supported_nativeaa_desc">Your device might not support the required Bluetooth or Wi-Fi features for Native Wireless. You can try it anyway, but if it fails, please use the \"Wireless Helper\" or \"Auto (Headunit Server)\" mode instead.</string>
+
     <string name="wait_for_wifi">Wait for WiFi before WiFi Direct</string>
     <string name="wait_for_wifi_description">On boot, wait for WiFi to connect before starting WiFi Direct. Enable this if your head unit needs a few seconds to connect to WiFi after power on.</string>
     <string name="wait_for_wifi_timeout">WiFi wait timeout</string>
+    <string name="wireless_24ghz_warning">Note: Wireless Android Auto on 2.4GHz devices can lead to lag, stutters, and disconnects. If you experience issues, please test via USB to confirm if it\'s a network limitation.</string>
+    <string name="fake_speed_title">Disable Video-Lock (Fake Speed)</string>
+    <string name="fake_speed_description">Reports a constant low speed (0.5 m/s) to the phone to prevent video content from being blocked while driving. Use with caution.</string>
+    <string name="exit_dialog_title">Exit Android Auto</string>
+    <string name="exit_dialog_stop">Stop Connection</string>
+    <string name="exit_dialog_pip">Picture-in-Picture</string>
+    <string name="exit_dialog_background">Move to Background</string>
+    <string name="gesture_hint">Tip: Swipe from the left edge with 2 fingers to open the exit menu.</string>
 </resources>

@@ -54,6 +54,7 @@
     <string name="gles_required_message">Der Monochrom-Modus benötigt GLES-Rendering, um einen Graustufen-Filter auf die Videoausgabe anzuwenden. GLES aktivieren?</string>
     <string name="enable_gles">GLES aktivieren</string>
     <string name="category_navigation">Navigation</string>
+    <string name="category_wireless">Kabellose Verbindung</string>
 
     <string name="reconnection_required_title">Neuverbindung erforderlich</string>
     <string name="reconnection_required_message">Das Gerät befindet sich in einem Wartezustand. Bitte ziehen Sie das USB-Kabel ab und stecken Sie es wieder ein, um Android Auto neu zu starten.</string>
@@ -184,6 +185,7 @@
         <item>Manuell (Liste)</item>
         <item>Auto-Suche (Headunit Server)</item>
         <item>Wireless Helper (Warten auf Handy)</item>
+        <item>Native Android Auto</item>
     </string-array>
     <string name="auto_connect_last_session">Auto-Connect letzte Sitzung</string>
     <string name="auto_connect_last_session_description">Verbindet beim App-Start automatisch mit dem zuletzt genutzten Gerät</string>
@@ -292,6 +294,8 @@
     <string name="notification_projection_active">Android Auto wird projiziert</string>
     <string name="shortcut_connect_title">Verbinden</string>
     <string name="shortcut_connect_desc">Mit letztem Gerät verbinden</string>
+    <string name="shortcut_selfmode_title">Self Mode</string>
+    <string name="shortcut_selfmode_desc">Android Auto auf diesem Gerät starten</string>
     <string name="shortcut_disconnect_title">Trennen</string>
     <string name="shortcut_disconnect_desc">Aktuelle Sitzung beenden</string>
     <string name="shortcut_exit_title">App beenden</string>
@@ -377,6 +381,7 @@
     <string name="kill_on_disconnect_screen_on_warning">Sie haben \"Bei Bildschirmaktivierung starten\" aktiviert. Diese Einstellung öffnet die App jedes Mal, wenn der Bildschirm eingeschaltet wird. In Kombination mit dem Schließen bei Trennung wird die App nach der Trennung geschlossen, aber sofort wieder geöffnet, wenn der Bildschirm erneut eingeschaltet wird, was eine Neustartschleife erzeugt.</string>
     <string name="kill_on_disconnect_conflicts_disabled">Konfliktierende Einstellungen wurden deaktiviert</string>
     <string name="wifi_disabled_info">Info: WLAN ist deaktiviert.</string>
+    <string name="bt_not_enabled">Bluetooth ist deaktiviert</string>
 
     <!-- Vehicle Info Settings -->
     <string name="vehicle_info_settings">Fahrzeuginformationen</string>
@@ -403,11 +408,18 @@
     <string name="vehicle_info_restart_note">Diese Daten werden bei jeder Verbindung an Android Auto gesendet.</string>
     <string name="auto_enable_hotspot">Hotspot automatisch aktivieren</string>
     <string name="auto_enable_hotspot_description">Startet automatisch einen WLAN-Hotspot auf diesem Gerät. (Funktioniert nicht auf allen Geräten)</string>
+    <string name="native_aa_wireless">Natives Android Auto Wireless</string>
+    <string name="native_aa_wireless_description">Aktiviert den offiziellen Bluetooth-Handshake für kabellose Verbindungen. Dies ermöglicht dem Handy, die Headunit automatisch zu erkennen.</string>
     <string name="hotspot_warning_title">Experimentelle Funktion</string>
     <string name="hotspot_warning_message">Diese Funktion nutzt Reflection und funktioniert möglicherweise nicht auf allen Geräten. Eventuell muss die Berechtigung \"Systemeinstellungen ändern\" manuell erteilt werden.</string>
     <string name="hotspot_permission_title">Berechtigung erforderlich</string>
     <string name="hotspot_permission_message">Die Hotspot-Funktion benötigt die Berechtigung \"Systemeinstellungen ändern\". Bitte aktivieren Sie diese im nächsten Bildschirm.</string>
+    <string name="not_supported_nativeaa">Natives WLAN scheint nicht unterstützt zu werden</string>
+    <string name="not_supported_nativeaa_desc">Ihr Gerät unterstützt möglicherweise nicht die erforderlichen Bluetooth- oder WLAN-Funktionen für natives WLAN. Sie können es trotzdem versuchen, aber wenn es fehlschlägt, verwenden Sie bitte stattdessen den „Wireless Helper“ oder den Modus „Auto (Headunit Server)“.</string>
     <string name="wait_for_wifi">Auf WLAN warten vor WiFi Direct</string>
     <string name="wait_for_wifi_description">Beim Starten auf WLAN-Verbindung warten, bevor WiFi Direct gestartet wird. Nützlich, wenn Ihr Headunit nach dem Einschalten einige Sekunden braucht, um sich mit dem WLAN zu verbinden.</string>
     <string name="wait_for_wifi_timeout">WLAN-Wartezeit</string>
+    <string name="wireless_24ghz_warning">Hinweis: Kabelloses Android Auto auf 2,4-GHz-Geräten kann zu Verzögerungen, Rucklern und Verbindungsabbrüchen führen. Bei Problemen testen Sie bitte die USB-Verbindung, um festzustellen, ob es sich um eine Netzwerkbeschränkung handelt.</string>
+    <string name="fake_speed_title">Video-Sperre deaktivieren (Fake Speed)</string>
+    <string name="fake_speed_description">Meldet dem Handy eine konstante niedrige Geschwindigkeit (0,5 m/s), um die Video-Sperre während der Fahrt zu umgehen. Mit Vorsicht verwenden.</string>
 </resources>

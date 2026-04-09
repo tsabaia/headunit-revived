@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.app.UiModeManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -25,6 +26,7 @@ import android.os.PowerManager
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import com.andrerinas.headunitrevived.App
 import com.andrerinas.headunitrevived.app.BootCompleteReceiver
 import com.andrerinas.headunitrevived.main.MainActivity
@@ -59,6 +61,10 @@ import com.andrerinas.headunitrevived.app.UsbAttachedActivity
 import android.media.AudioManager
 import com.andrerinas.headunitrevived.utils.HotspotManager
 import com.andrerinas.headunitrevived.utils.VpnControl
+import com.andrerinas.headunitrevived.utils.SilentAudioPlayer
+import com.andrerinas.headunitrevived.connection.CarKeyReceiver
+import com.andrerinas.headunitrevived.connection.NativeAaHandshakeManager
+import com.andrerinas.headunitrevived.utils.Settings
 import java.net.ServerSocket
 
 /**
@@ -86,6 +92,9 @@ class AapService : Service(), UsbReceiver.Listener {
     private lateinit var usbReceiver: UsbReceiver
     private var nightModeManager: NightModeManager? = null
     private var wifiDirectManager: WifiDirectManager? = null
+    private var nativeAaHandshakeManager: NativeAaHandshakeManager? = null
+    private var carKeyReceiver: CarKeyReceiver? = null
+    private var silentAudioPlayer: SilentAudioPlayer? = null
     private var wirelessServer: WirelessServer? = null
     private var networkDiscovery: NetworkDiscovery? = null
     private var mediaSession: MediaSessionCompat? = null
@@ -419,16 +428,29 @@ class AapService : Service(), UsbReceiver.Listener {
         LogExporter.startCapture(this, LogExporter.LogLevel.DEBUG)
         AppLog.i("Auto-started continuous log capture")
 
-        LogExporter.startCapture(this, LogExporter.LogLevel.DEBUG)
-        AppLog.i("Auto-started continuous log capture")
-
         startService(GpsLocationService.intent(this))
+
+        nativeAaHandshakeManager = NativeAaHandshakeManager(this, serviceScope)
         wifiDirectManager = WifiDirectManager(this)
         initWifiModeWithOptionalWait()
+        wifiDirectManager?.setCredentialsListener { ssid, psk, ip, bssid ->
+            AppLog.i("AapService: Received WiFi credentials from manager (SSID=$ssid, IP=$ip). Updating HandshakeManager.")
+            nativeAaHandshakeManager?.updateWifiCredentials(ssid, psk, ip, bssid)
+        }
+
+        // Start the BT handshake server if enabled
+        if (App.provide(this).settings.wifiConnectionMode == 3) {
+            nativeAaHandshakeManager?.start()
+        }
+
+        carKeyReceiver = CarKeyReceiver()
+        silentAudioPlayer = SilentAudioPlayer(this)
+
+        initWifiMode()
         checkAlreadyConnectedUsb()
         registerNetworkMonitor()
 
-        // Grab permanent AUDIOFOCUS_GAIN at service start (like HUR).
+        // Grab permanent AUDIOFOCUS_GAIN at service start.
         // This ensures the headunit owns system audio focus before any AA connection,
         // preventing other apps from stealing it and causing AA to keep audio on the phone.
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -529,6 +551,25 @@ class AapService : Service(), UsbReceiver.Listener {
         updateNotification()
         acquireWifiLock()
 
+        // Start silent audio hack to keep media focus (helps with steering wheel buttons)
+        silentAudioPlayer?.start()
+
+        // Register the comprehensive steering wheel key receiver
+        val filter = IntentFilter().apply {
+            priority = 1000
+            CarKeyReceiver.ACTIONS.forEach { addAction(it) }
+        }
+        try {
+            ContextCompat.registerReceiver(
+                this,
+                carKeyReceiver,
+                filter,
+                ContextCompat.RECEIVER_EXPORTED
+            )
+        } catch (e: Exception) {
+            AppLog.e("AapService: Failed to register CarKeyReceiver", e)
+        }
+
         // Reactivate the existing MediaSession (created in onCreate, kept alive across disconnects)
         mediaSession?.isActive = true
         updateMediaSessionState(true)
@@ -546,15 +587,11 @@ class AapService : Service(), UsbReceiver.Listener {
     }
 
     private fun setupMediaSession() {
-        mediaSession = MediaSessionCompat(this, "HeadunitRevived").apply {
+        val mbr = ComponentName(this, MediaButtonReceiver::class.java)
+        mediaSession = MediaSessionCompat(this, "HeadunitRevived", mbr, null).apply {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
-                    val keyEvent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        mediaButtonEvent?.getParcelableExtra(Intent.EXTRA_KEY_EVENT, android.view.KeyEvent::class.java)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        mediaButtonEvent?.getParcelableExtra(Intent.EXTRA_KEY_EVENT)
-                    }
+                    val keyEvent = mediaButtonEvent?.let { IntentCompat.getParcelableExtra(it, Intent.EXTRA_KEY_EVENT, android.view.KeyEvent::class.java) }
 
                     if (keyEvent != null) {
                         val actionStr = if (keyEvent.action == android.view.KeyEvent.ACTION_DOWN) "DOWN" else "UP"
@@ -633,11 +670,18 @@ class AapService : Service(), UsbReceiver.Listener {
     private fun onDisconnected(state: CommManager.ConnectionState.Disconnected) {
         isSwitchingToAccessory.set(false)
         releaseWifiLock()
+
+        // Cleanup steering wheel and audio focus hacks
+        silentAudioPlayer?.stop()
+        try {
+            carKeyReceiver?.let { unregisterReceiver(it) }
+        } catch (e: Exception) {}
+
         if (!isDestroying) updateNotification()
         // Keep MediaSession alive across disconnect/reconnect cycles.
         // Only deactivate it — do NOT release it. A released session can no longer
         // receive media button events, which means the keymap stops working until
-        // the next connection. HUR keeps its session alive the entire service lifetime.
+        // the next connection. HURev keeps its session alive the entire service lifetime.
         mediaSession?.isActive = false
         updateMediaSessionState(false)
         serviceScope.launch(Dispatchers.IO) {
@@ -660,6 +704,7 @@ class AapService : Service(), UsbReceiver.Listener {
         if (selfMode) {
             AppLog.i("AapService: Self Mode disconnected. Not restarting.")
             selfMode = false
+            stopWirelessServer()
             return
         }
 
@@ -679,7 +724,7 @@ class AapService : Service(), UsbReceiver.Listener {
         // Skip if the user voluntarily exited AA — the dongle is likely still connected with
         // stale data, and reconnecting immediately just causes handshake failures. The next
         // USB attach event will re-trigger the flow cleanly.
-        if (lastType == com.andrerinas.headunitrevived.utils.Settings.CONNECTION_TYPE_USB &&
+        if (lastType == Settings.CONNECTION_TYPE_USB &&
             (settings.autoConnectLastSession || settings.autoConnectSingleUsbDevice)) {
             if (state.isUserExit && !(settings.autoStartOnUsb && settings.reopenOnReconnection)) {
                 AppLog.i("AapService: USB disconnect after user Exit. Skipping auto-reconnect (waiting for dongle re-enumeration).")
@@ -699,7 +744,7 @@ class AapService : Service(), UsbReceiver.Listener {
 
         if (!state.isClean) {
             val mode = settings.wifiConnectionMode
-            if (mode == 1 && lastType != com.andrerinas.headunitrevived.utils.Settings.CONNECTION_TYPE_USB) {
+            if (mode == 1 && lastType != Settings.CONNECTION_TYPE_USB) {
                 AppLog.i("AapService: Unclean WiFi disconnect in Auto Mode. Retrying discovery in 2s...")
                 serviceScope.launch {
                     delay(2000)
@@ -838,7 +883,7 @@ class AapService : Service(), UsbReceiver.Listener {
         if (isWifiConnected || Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
             if (isWifiConnected) AppLog.i("WifiWait: WiFi already connected, initializing immediately")
             else AppLog.i("WifiWait: Legacy device (API < 21), skipping wait.")
-            
+
             wifiModeInitialized = true
             initWifiMode()
             return
@@ -895,21 +940,37 @@ class AapService : Service(), UsbReceiver.Listener {
 
     /** Starts [WirelessServer] if the user has configured server WiFi mode (mode == 2). */
     private fun initWifiMode() {
-        if (App.provide(this).settings.wifiConnectionMode == 2) {
+        val settings = App.provide(this).settings
+        val mode = settings.wifiConnectionMode
+
+        AppLog.i("AapService: Initializing WiFi Mode: $mode")
+
+        // 0. Clean up existing wireless state before re-initializing
+        stopWirelessServer()
+        networkDiscovery?.stop()
+
+        // Mode 1: Auto (Headunit Server), Mode 2: Helper (Wireless Launcher), Mode 3: Native AA
+        if (mode == 1 || mode == 2 || mode == 3) {
             startWirelessServer()
-            if (App.provide(this).settings.autoEnableHotspot) {
-                // Run on background thread since hotspot enable may sleep briefly
+
+            // 1. Hotspot Logic (Only for Mode 1 and 2)
+            if ((mode == 1 || mode == 2) && settings.autoEnableHotspot) {
                 Thread {
                     AppLog.i("AapService: Auto-enabling hotspot...")
                     HotspotManager.setHotspotEnabled(this, true)
                 }.start()
-            } else {
-                val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-                if (wifiManager.isWifiEnabled) {
+            }
+
+            // 2. WiFi Direct Logic (Mode 3 needs Quiet Host, Mode 1/2 needs Visibility)
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            if (wifiManager.isWifiEnabled) {
+                if (mode == 3) {
+                    wifiDirectManager?.startNativeAaQuietHost()
+                } else if (mode == 1 || mode == 2) {
                     wifiDirectManager?.makeVisible()
-                } else {
-                    AppLog.i("AapService: WiFi is disabled, skipping Wi-Fi Direct visibility.")
                 }
+            } else {
+                AppLog.i("AapService: WiFi is disabled, skipping Wi-Fi Direct initialization.")
             }
         }
     }
@@ -977,11 +1038,12 @@ class AapService : Service(), UsbReceiver.Listener {
     override fun onDestroy() {
         AppLog.i("AapService destroying... (wakeLock held=${bootWakeLock?.isHeld == true})")
         isDestroying = true
+        nativeAaHandshakeManager?.stop()
         releaseBootWakeLock()
 
         if (App.provide(this).settings.autoEnableHotspot) {
             AppLog.i("AapService: Auto-disabling hotspot...")
-            com.andrerinas.headunitrevived.utils.HotspotManager.setHotspotEnabled(this, false)
+            HotspotManager.setHotspotEnabled(this, false)
         }
 
         wifiReadyTimeoutJob?.cancel()
@@ -1060,12 +1122,23 @@ class AapService : Service(), UsbReceiver.Listener {
 
         when (intent?.action) {
             ACTION_START_SELF_MODE       -> startSelfMode()
-            ACTION_START_WIRELESS        -> startWirelessServer()
+            ACTION_START_WIRELESS        -> initWifiMode()
             ACTION_START_WIRELESS_SCAN   -> {
                 val mode = App.provide(this).settings.wifiConnectionMode
-                startDiscovery(oneShot = (mode != 2))
+                if (mode != 3) {
+                    startDiscovery(oneShot = (mode != 2))
+                }
             }
             ACTION_STOP_WIRELESS         -> stopWirelessServer()
+            ACTION_NATIVE_AA_POKE        -> {
+                val mac = intent?.getStringExtra(EXTRA_MAC)
+                if (mac != null) {
+                    AppLog.i("AapService: Received manual Native-AA poke request for $mac")
+                    // Ensure WiFi Direct is ready before poking
+                    initWifiMode()
+                    nativeAaHandshakeManager?.manualPoke(mac)
+                }
+            }
             ACTION_DISCONNECT            -> {
                 AppLog.i("Disconnect action received.")
                 if (commManager.isConnected) commManager.disconnect()
@@ -1119,6 +1192,21 @@ class AapService : Service(), UsbReceiver.Listener {
             // Cable physically removed — the USB connection is already dead, so skip the
             // ByeByeRequest send (which would block ~1 s trying to write to a gone device).
             commManager.disconnect(sendByeBye = false)
+        }
+    }
+
+    override fun onUsbAccessoryDetach() {
+        AppLog.i("USB Accessory detached. This might be a transient state (e.g., 100% battery). Attempting to re-sync...")
+        userExitedAA = false
+        if (commManager.isConnected) {
+            commManager.disconnect(sendByeBye = false)
+        }
+        
+        // Wait a bit and check if the device is still there in normal mode
+        serviceScope.launch {
+            delay(1500) // Give the phone/system time to settle its USB state
+            AppLog.i("Accessory detach cooldown finished. Checking for re-connection...")
+            checkAlreadyConnectedUsb(force = true)
         }
     }
 
@@ -1377,8 +1465,11 @@ class AapService : Service(), UsbReceiver.Listener {
      */
     private fun startWirelessServer() {
         if (wirelessServer != null) return
-        wirelessServer = WirelessServer().apply { start() }
-        startDiscovery()
+        val mode = App.provide(this).settings.wifiConnectionMode
+        wirelessServer = WirelessServer().apply { start(registerNsd = (mode != 3)) }
+        if (mode != 3) {
+            startDiscovery()
+        }
     }
 
     /**
@@ -1388,6 +1479,7 @@ class AapService : Service(), UsbReceiver.Listener {
      *                used for the "auto WiFi" reconnect case.
      */
     private fun startDiscovery(oneShot: Boolean = false) {
+        if (App.provide(this).settings.wifiConnectionMode == 3) return
         if (commManager.isConnected || (wirelessServer == null && !oneShot)) return
 
         networkDiscovery?.stop()
@@ -1461,7 +1553,7 @@ class AapService : Service(), UsbReceiver.Listener {
                 addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             } to 100
         } else {
-            Intent(this, com.andrerinas.headunitrevived.main.MainActivity::class.java).apply {
+            Intent(this, MainActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             } to 101
         }
@@ -1739,11 +1831,11 @@ class AapService : Service(), UsbReceiver.Listener {
         private var registrationListener: NsdManager.RegistrationListener? = null
         private var job: Job? = null
 
-        fun start() {
+        fun start(registerNsd: Boolean = true) {
             nsdManager = getSystemService(Context.NSD_SERVICE) as? NsdManager
             if (nsdManager == null) {
                 AppLog.e("WirelessServer: NsdManager not available on this device.")
-            } else {
+            } else if (registerNsd) {
                 registerNsd()
             }
 
@@ -1754,16 +1846,17 @@ class AapService : Service(), UsbReceiver.Listener {
                     logLocalNetworkInterfaces()
 
                     while (isActive) {
+                        AppLog.d("WirelessServer: Waiting for TCP connection on port 5288...")
                         val clientSocket = serverSocket?.accept() ?: break
-                        AppLog.i("Wireless client connected: ${clientSocket.inetAddress}")
+                        AppLog.i("WirelessServer: Incoming connection detected from ${clientSocket.inetAddress}")
                         serviceScope.launch {
                             if (commManager.isConnected) {
-                                AppLog.w("Already connected, dropping wireless client")
+                                AppLog.w("WirelessServer: Already connected, dropping client from ${clientSocket.inetAddress}")
                                 withContext(Dispatchers.IO) {
                                     try { clientSocket.close() } catch (e: Exception) {}
                                 }
                             } else {
-                                AppLog.i("Wireless client accepted from ${clientSocket.inetAddress}. Initializing connection...")
+                                AppLog.i("WirelessServer: Accepted client connection from ${clientSocket.inetAddress}. Passing to CommManager...")
                                 commManager.connect(clientSocket)
                             }
                         }
@@ -1847,6 +1940,7 @@ class AapService : Service(), UsbReceiver.Listener {
         const val ACTION_START_WIRELESS            = "com.andrerinas.headunitrevived.ACTION_START_WIRELESS"
         const val ACTION_START_WIRELESS_SCAN       = "com.andrerinas.headunitrevived.ACTION_START_WIRELESS_SCAN"
         const val ACTION_STOP_WIRELESS             = "com.andrerinas.headunitrevived.ACTION_STOP_WIRELESS"
+        const val ACTION_NATIVE_AA_POKE            = "com.andrerinas.headunitrevived.ACTION_NATIVE_AA_POKE"
         const val ACTION_CHECK_USB                 = "com.andrerinas.headunitrevived.ACTION_CHECK_USB"
         const val ACTION_STOP_SERVICE              = "com.andrerinas.headunitrevived.ACTION_STOP_SERVICE"
         const val ACTION_DISCONNECT                = "com.andrerinas.headunitrevived.ACTION_DISCONNECT"
@@ -1872,5 +1966,7 @@ class AapService : Service(), UsbReceiver.Listener {
         /** Screen-off duration (ms) above which SCREEN_ON is treated as a hibernate wake.
          *  60 seconds filters out normal screen timeouts while catching any hibernate/quick boot. */
         private const val HIBERNATE_WAKE_THRESHOLD_MS = 60_000L
+
+        const val EXTRA_MAC = "extra_mac"
     }
 }

@@ -54,6 +54,7 @@
     <string name="gles_required_message">Modul monocrom necesită randare GLES pentru a aplica un filtru de tonuri de gri pe ieșirea video. Activezi GLES?</string>
     <string name="enable_gles">Activează GLES</string>
     <string name="category_navigation">Navigare</string>
+    <string name="category_wireless">Conexiune wireless</string>
 
     <string name="reconnection_required_title">Reconectare necesară</string>
     <string name="reconnection_required_message">Dispozitivul este în așteptare. Te rog să deconectezi și să reconectezi cablul USB pentru a reporni Android Auto.</string>
@@ -190,6 +191,7 @@
         <item>Manual (Listă)</item>
         <item>Căutare automată (Server Headunit)</item>
         <item>Asistent Wireless (Așteaptă telefonul)</item>
+        <item>Native Android Auto</item>
     </string-array>
     <string name="auto_connect_last_session">Conectare automată la ultima sesiune</string>
     <string name="auto_connect_last_session_description">Reconectează automat ultimul dispozitiv la pornirea aplicației</string>
@@ -377,6 +379,7 @@
     <string name="kill_on_disconnect_screen_on_warning">Aveți \"Pornire la aprinderea ecranului\" activată. Această setare deschide aplicația de fiecare dată când ecranul se aprinde. Combinată cu închiderea la deconectare, aplicația se va închide după deconectare, dar se va redeschide imediat când ecranul se aprinde din nou, creând o buclă de repornire.</string>
     <string name="kill_on_disconnect_conflicts_disabled">Setările conflictuale au fost dezactivate</string>
     <string name="wifi_disabled_info">Info: Wi-Fi este dezactivat.</string>
+    <string name="bt_not_enabled">Info: Bluetooth este dezactivat.</string>
 
     <!-- Vehicle Info Settings -->
     <string name="vehicle_info_settings">Informații vehicul</string>
@@ -407,7 +410,13 @@
     <string name="hotspot_warning_message">Această funcție folosește reflexie și este posibil să nu funcționeze pe toate dispozitivele. Este posibil să fie nevoie să acordați manual permisiunea \"Modificare setări de sistem\".</string>
     <string name="hotspot_permission_title">Permisiune necesară</string>
     <string name="hotspot_permission_message">Funcția de hotspot necesită permisiunea \"Modificare setări de sistem\". Vă rugăm să o activați pe ecranul următor.</string>
+
+    <string name="not_supported_nativeaa">Conexiunea Wireless Nativă pare să nu fie suportată</string>
+    <string name="not_supported_nativeaa_desc">Este posibil ca dispozitivul tău să nu suporte funcțiile Bluetooth sau Wi-Fi necesare pentru Wireless Nativ. Poți încerca oricum, dar dacă nu reușești, te rugăm să folosești modul „Wireless Helper” sau „Auto (Headunit Server)”.</string>
+    <string name="shortcut_selfmode_title">Mod Self</string>
+    <string name="shortcut_selfmode_desc">Pornește Android Auto pe acest dispozitiv</string>
     <string name="wait_for_wifi">Așteaptă WiFi înainte de WiFi Direct</string>
     <string name="wait_for_wifi_description">La pornire, așteaptă conectarea WiFi înainte de a porni WiFi Direct. Util dacă headunit-ul tău are nevoie de câteva secunde pentru a se conecta la WiFi după pornire.</string>
     <string name="wait_for_wifi_timeout">Limita de așteptare WiFi</string>
+    <string name="wireless_24ghz_warning">Notă: Android Auto wireless pe dispozitive de 2,4 GHz poate duce la întârzieri, sacadări și deconectări. Dacă întâmpinați probleme, vă rugăm să testați prin USB pentru a confirma dacă este o limitare a rețelei.</string>
 </resources>

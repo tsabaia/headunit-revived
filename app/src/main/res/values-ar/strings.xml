@@ -54,6 +54,7 @@
     <string name="gles_required_message">يحتاج الوضع أحادي اللون إلى عرض GLES لتطبيق مرشح التدرج الرمادي على مخرجات الفيديو. هل تريد تفعيل GLES؟</string>
     <string name="enable_gles">تفعيل GLES</string>
     <string name="category_navigation">الملاحة</string>
+    <string name="category_wireless">اتصال لاسلكي</string>
 
     <string name="reconnection_required_title">يلزم إعادة الاتصال</string>
     <string name="reconnection_required_message">الجهاز في حالة انتظار. يرجى فصل كابل USB وإعادة توصيله لبدء Android Auto مجددا.</string>
@@ -181,6 +182,7 @@
         <item>يدوي (قائمة)</item>
         <item>بحث تلقائي (خادم Headunit)</item>
         <item>مساعد لاسلكي (في انتظار الهاتف)</item>
+        <item>Native Android Auto</item>
     </string-array>
     <string name="auto_connect_last_session">الاتصال التلقائي بالجلسة الأخيرة</string>
     <string name="auto_connect_last_session_description">إعادة الاتصال تلقائيا بآخر جهاز مستخدم عند بدء التطبيق</string>
@@ -289,6 +291,8 @@
     <string name="notification_projection_active">Android Auto قيد الإسقاط</string>
     <string name="shortcut_connect_title">اتصال</string>
     <string name="shortcut_connect_desc">الاتصال بآخر جهاز معروف</string>
+    <string name="shortcut_selfmode_title">الوضع الذاتي</string>
+    <string name="shortcut_selfmode_desc">ابدأ Android Auto على هذا الجهاز</string>
     <string name="shortcut_disconnect_title">قطع الاتصال</string>
     <string name="shortcut_disconnect_desc">إنهاء الجلسة الحالية</string>
     <string name="shortcut_exit_title">إغلاق التطبيق</string>
@@ -377,6 +381,7 @@
     <string name="kill_on_disconnect_screen_on_warning">لديك خيار \"البدء عند تشغيل الشاشة\" مفعّل. هذا الإعداد يفتح التطبيق في كل مرة تُشغّل فيها الشاشة. مع خيار الإغلاق عند قطع الاتصال، سيُغلق التطبيق بعد قطع الاتصال لكنه سيُعاد فتحه فوراً عند تشغيل الشاشة مجدداً، مما يُنشئ حلقة إعادة تشغيل.</string>
     <string name="kill_on_disconnect_conflicts_disabled">تم تعطيل الإعدادات المتعارضة</string>
     <string name="wifi_disabled_info">معلومات: واي فاي معطل.</string>
+    <string name="bt_not_enabled">معلومات: البلوتوث معطل.</string>
 
     <!-- Vehicle Info Settings -->
     <string name="vehicle_info_settings">معلومات المركبة</string>
@@ -407,7 +412,10 @@
     <string name="hotspot_warning_message">تستخدم هذه الميزة الانعكاس وقد لا تعمل على جميع الأجهزة. قد تحتاج إلى منح إذن \"تعديل إعدادات النظام\" يدوياً.</string>
     <string name="hotspot_permission_title">إذن مطلوب</string>
     <string name="hotspot_permission_message">تتطلب ميزة نقطة الاتصال إذن \"تعديل إعدادات النظام\". يرجى تفعيله في الشاشة التالية.</string>
+    <string name="not_supported_nativeaa">يبدو أن الاتصال اللاسلكي الأصلي غير مدعوم</string>
+    <string name="not_supported_nativeaa_desc">قد لا يدعم جهازك ميزات Bluetooth أو Wi-Fi المطلوبة للاتصال اللاسلكي الأصلي. يمكنك تجربته على أي حال، ولكن إذا فشل، يرجى استخدام وضع \"Wireless Helper\" أو \"تلقائي (خادم وحدة الرأس)\" بدلاً من ذلك.</string>
     <string name="wait_for_wifi">انتظار WiFi قبل WiFi Direct</string>
     <string name="wait_for_wifi_description">عند بدء التشغيل، انتظر اتصال WiFi قبل بدء WiFi Direct. مفيد إذا كان جهازك يحتاج بضع ثوانٍ للاتصال بشبكة WiFi بعد التشغيل.</string>
     <string name="wait_for_wifi_timeout">مهلة انتظار WiFi</string>
+    <string name="wireless_24ghz_warning">ملاحظة: يمكن أن يؤدي استخدام Android Auto اللاسلكي على أجهزة 2.4 جيجا هرتز إلى حدوث تأخير وتقطع وانقطاع في الاتصال. إذا واجهت مشكلات، يرجى الاختبار عبر USB للتأكد مما ifا كان ذلك بسبب قيود الشبكة.</string>
 </resources>

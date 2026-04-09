@@ -54,6 +54,7 @@
     <string name="gles_required_message">A monokróm mód GLES renderelést igényel a szürkeárnyalatos szűrő alkalmazásához a videokimeneten. Engedélyezed a GLES-t?</string>
     <string name="enable_gles">GLES engedélyezése</string>
     <string name="category_navigation">Navigáció</string>
+    <string name="category_wireless">Vezeték nélküli kapcsolat</string>
 
     <string name="reconnection_required_title">Újrakapcsolódás szükséges</string>
     <string name="reconnection_required_message">Az eszköz várakozó állapotban van. Kérlek húzd ki, majd dugd vissza az USB-kábelt az Android Auto újraindításához.</string>
@@ -180,6 +181,7 @@
         <item>Kézi (Lista)</item>
         <item>Auto-keresés (fejegység szerver)</item>
         <item>Wireless Helper (Várakozás a telefonra)</item>
+        <item>Native Android Auto</item>
     </string-array>
     <string name="auto_connect_last_session">Automatikus folytatás</string>
     <string name="auto_connect_last_session_description">Indításkor automatikus újracsatlakozás a legutóbb használt eszközhöz.</string>
@@ -288,6 +290,8 @@
     <string name="notification_projection_active">Android Auto kivetítve</string>
     <string name="shortcut_connect_title">Kapcsolódás</string>
     <string name="shortcut_connect_desc">Kapcsolódás az utolsó ismert eszközhöz</string>
+    <string name="shortcut_selfmode_title">Saját mód</string>
+    <string name="shortcut_selfmode_desc">Android Auto indítása ezen az eszközön</string>
     <string name="shortcut_disconnect_title">Leválasztás</string>
     <string name="shortcut_disconnect_desc">Az aktuális munkamenet befejezése</string>
     <string name="shortcut_exit_title">Kilépés az alkalmazásból</string>
@@ -376,6 +380,7 @@
     <string name="kill_on_disconnect_screen_on_warning">A \"Bekapcsolás a képernyő bekapcsolásakor\" funkció aktív. Ez a beállítás minden alkalommal megnyitja az alkalmazást, amikor a képernyő bekapcsol. A lekapcsoláskor történő bezárással kombinálva az alkalmazás lekapcsolás után bezárul, de azonnal újranyílik, amikor a képernyő ismét bekapcsol, ami újraindítási hurkot eredményez.</string>
     <string name="kill_on_disconnect_conflicts_disabled">Az ütköző beállítások letiltásra kerültek</string>
     <string name="wifi_disabled_info">Infó: A Wi-Fi ki van kapcsolva.</string>
+    <string name="bt_not_enabled">Infó: A Bluetooth ki van kapcsolva.</string>
 
     <!-- Vehicle Info Settings -->
     <string name="vehicle_info_settings">Járműinformáció</string>
@@ -406,7 +411,10 @@
     <string name="hotspot_warning_message">Ez a funkció reflexiót használ, és nem minden eszközön működik. Szükség lehet a \"Rendszerbeállítások módosítása\" engedély manuális megadására.</string>
     <string name="hotspot_permission_title">Engedély szükséges</string>
     <string name="hotspot_permission_message">A hotspot funkció a \"Rendszerbeállítások módosítása\" engedélyt igényli. Kérjük, engedélyezze a következő képernyőn.</string>
+    <string name="not_supported_nativeaa">A natív vezeték nélküli mód úgy tűnik, nem támogatott</string>
+    <string name="not_supported_nativeaa_desc">Lehet, hogy eszköze nem támogatja a natív vezeték nélküli módhoz szükséges Bluetooth vagy Wi-Fi funkciókat. Ennek ellenére megpróbálhatja, de ha nem sikerül, kérjük, használja helyette a „Wireless Helper” vagy az „Auto (Headunit Server)” módot.</string>
     <string name="wait_for_wifi">Várakozás WiFi-re a WiFi Direct előtt</string>
     <string name="wait_for_wifi_description">Indításkor megvárja a WiFi csatlakozást a WiFi Direct elindítása előtt. Hasznos, ha a fejegység néhány másodpercet vesz igénybe a WiFi csatlakozáshoz bekapcsolás után.</string>
     <string name="wait_for_wifi_timeout">WiFi várakozási időkorlát</string>
+    <string name="wireless_24ghz_warning">Megjegyzés: A vezeték nélküli Android Auto 2,4 GHz-es eszközökön akadozáshoz, szaggatáshoz és leálláshoz vezethet. Ha problémákat tapasztal, kérjük, tesztelje USB-n keresztül, hogy megerősítse, hálózati korlátozásról van-e szó.</string>
 </resources>

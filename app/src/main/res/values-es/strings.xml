@@ -54,6 +54,7 @@
     <string name="gles_required_message">El modo monocromático necesita renderizado GLES para aplicar un filtro de escala de grises a la salida de vídeo. ¿Activar GLES?</string>
     <string name="enable_gles">Activar GLES</string>
     <string name="category_navigation">Navegación</string>
+    <string name="category_wireless">Conexión inalámbrica</string>
 
     <string name="reconnection_required_title">Reconexión necesaria</string>
     <string name="reconnection_required_message">El dispositivo está en estado de espera. Por favor, desconecte y vuelva a conectar el cable USB para reiniciar Android Auto.</string>
@@ -181,6 +182,7 @@
         <item>Manual (lista)</item>
         <item>Búsqueda automática (Headunit Server)</item>
         <item>Wireless Helper (esperando al teléfono)</item>
+        <item>Native Android Auto</item>
     </string-array>
     <string name="auto_connect_last_session">Conectar automáticamente a la última sesión</string>
     <string name="auto_connect_last_session_description">Reconecta automáticamente al último dispositivo usado al iniciar la app</string>
@@ -289,6 +291,8 @@
     <string name="notification_projection_active">Android Auto está proyectado</string>
     <string name="shortcut_connect_title">Conectar</string>
     <string name="shortcut_connect_desc">Conectar al último dispositivo conocido</string>
+    <string name="shortcut_selfmode_title">Modo Propio</string>
+    <string name="shortcut_selfmode_desc">Iniciar Android Auto en este dispositivo</string>
     <string name="shortcut_disconnect_title">Desconectar</string>
     <string name="shortcut_disconnect_desc">Finalizar sesión actual</string>
     <string name="shortcut_exit_title">Salir de la aplicación</string>
@@ -377,6 +381,7 @@
     <string name="kill_on_disconnect_screen_on_warning">Tienes activado \"Iniciar al encender la pantalla\". Esta opción abre la app cada vez que se enciende la pantalla. Combinado con cerrar al desconectar, la app se cerrará tras la desconexión pero se reabrirá inmediatamente cuando la pantalla se encienda de nuevo, creando un bucle de reinicio.</string>
     <string name="kill_on_disconnect_conflicts_disabled">Los ajustes en conflicto han sido desactivados</string>
     <string name="wifi_disabled_info">Info: El Wi-Fi está desactivado.</string>
+    <string name="bt_not_enabled">Info: El Bluetooth está desactivado.</string>
 
     <!-- Vehicle Info Settings -->
     <string name="vehicle_info_settings">Información del vehículo</string>
@@ -407,7 +412,10 @@
     <string name="hotspot_warning_message">Esta función utiliza reflexión y es posible que no funcione en todos los dispositivos. También puede requerir que se otorgue manualmente el permiso \"Modificar ajustes del sistema\".</string>
     <string name="hotspot_permission_title">Permiso requerido</string>
     <string name="hotspot_permission_message">La función de punto de acceso requiere el permiso \"Modificar ajustes del sistema\". Por favor, actívelo en la siguiente pantalla.</string>
+    <string name="not_supported_nativeaa">El modo inalámbrico nativo parece no ser compatible</string>
+    <string name="not_supported_nativeaa_desc">Es posible que su dispositivo no sea compatible con las funciones de Bluetooth o Wi-Fi necesarias para el modo inalámbrico nativo. Puede intentarlo de todos modos, pero si falla, use el modo \"Wireless Helper\" o \"Automático (Headunit Server)\" en su lugar.</string>
     <string name="wait_for_wifi">Esperar WiFi antes de WiFi Direct</string>
     <string name="wait_for_wifi_description">Al iniciar, espera a que el WiFi se conecte antes de iniciar WiFi Direct. Útil si tu radio tarda unos segundos en conectarse al WiFi después de encender.</string>
-    <string name="wait_for_wifi_timeout">Tiempo de espera WiFi</string>
-</resources>
+    <string name="wait_for_wifi_timeout">Tiempo de espera de WiFi</string>
+    <string name="wireless_24ghz_warning">Nota: Android Auto inalámbrico en dispositivos de 2.4GHz puede causar lag, tirones y desconexiones. Si tiene problemas, pruebe a través de USB para confirmar si es una limitación de la red.</string>
+    </resources>

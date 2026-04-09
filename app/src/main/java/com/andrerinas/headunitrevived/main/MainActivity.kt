@@ -2,6 +2,7 @@ package com.andrerinas.headunitrevived.main
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -193,6 +194,12 @@ class MainActivity : BaseActivity() {
                     action = AapService.ACTION_DISCONNECT
                 }
                 ContextCompat.startForegroundService(this, stopIntent)
+            } else if (data?.scheme == "headunit" && data.host == "selfmode") {
+                AppLog.i("Received start-in-selfmode intent")
+                val selfModeIntent = Intent(this, AapService::class.java).apply {
+                    action = AapService.ACTION_START_SELF_MODE
+                }
+                ContextCompat.startForegroundService(this, selfModeIntent)
             } else if (data?.scheme == "headunit" && data.host == "exit") {
                 AppLog.i("Received full exit intent")
                 val exitIntent = Intent(this, AapService::class.java).apply {
@@ -211,20 +218,30 @@ class MainActivity : BaseActivity() {
     }
 
     private fun requestPermissions() {
-        val permissionsToRequest = mutableListOf(
+        val requiredPermissions = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.ACCESS_FINE_LOCATION
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+            requiredPermissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        ActivityCompat.requestPermissions(
-            this,
-            permissionsToRequest.toTypedArray(),
-            permissionRequestCode
-        )
+        // Filter out permissions that are already granted
+        val permissionsToRequest = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (permissionsToRequest.isNotEmpty()) {
+            AppLog.i("Requesting missing permissions: $permissionsToRequest")
+            ActivityCompat.requestPermissions(
+                this,
+                permissionsToRequest.toTypedArray(),
+                permissionRequestCode
+            )
+        } else {
+            AppLog.d("All required permissions already granted.")
+        }
     }
 
     private fun setFullscreen() {

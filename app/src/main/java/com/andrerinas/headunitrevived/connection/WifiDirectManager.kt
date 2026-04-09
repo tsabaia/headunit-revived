@@ -20,13 +20,19 @@ import com.andrerinas.headunitrevived.utils.AppLog
 import java.net.InetSocketAddress
 import java.net.Socket
 
-class WifiDirectManager(private val context: Context) : WifiP2pManager.ConnectionInfoListener {
+class WifiDirectManager(private val context: Context) : WifiP2pManager.ConnectionInfoListener, WifiP2pManager.GroupInfoListener {
 
     private val manager: WifiP2pManager? = context.getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
     private var channel: WifiP2pManager.Channel? = null
     private var isGroupOwner = false
     private var isConnected = false
     private val handler = Handler(Looper.getMainLooper())
+
+    private var onCredentialsReady: ((ssid: String, psk: String, ip: String, bssid: String) -> Unit)? = null
+
+    fun setCredentialsListener(callback: (String, String, String, String) -> Unit) {
+        this.onCredentialsReady = callback
+    }
 
     private val discoveryRunnable = object : Runnable {
         override fun run() {
@@ -49,7 +55,9 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
                         intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
                     }
                     device?.let {
-                        AppLog.i("WifiDirectManager: Local name: ${it.deviceName}")
+                        if (com.andrerinas.headunitrevived.App.provide(context).settings.wifiConnectionMode != 3) {
+                            AppLog.i("WifiDirectManager: Local name: ${it.deviceName}")
+                        }
                         AapService.wifiDirectName.value = it.deviceName
                     }
                 }
@@ -88,14 +96,17 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
         if (info.groupFormed) {
             isConnected = true
             isGroupOwner = info.isGroupOwner
-            AppLog.i("WifiDirectManager: Group formed. Owner: $isGroupOwner, GO IP: ${info.groupOwnerAddress?.hostAddress}")
+            val goIp = info.groupOwnerAddress?.hostAddress ?: "unknown"
+            AppLog.i("WifiDirectManager: Group formed. Owner: $isGroupOwner, GO IP: $goIp")
 
-            // HUR Trick: If NOT Group Owner, connect to the phone (GO) on port 5289 to announce tablet presence
-            if (!isGroupOwner && info.groupOwnerAddress != null) {
+            if (isGroupOwner) {
+                // Request group info to get SSID and Passphrase, and check for connected clients
+                manager?.requestGroupInfo(channel, this)
+            } else if (info.groupOwnerAddress != null) {
                 Thread {
                     var socket: Socket? = null
                     try {
-                        AppLog.i("WifiDirectManager: Pinging Phone (GO) to announce tablet...")
+                        AppLog.i("WifiDirectManager: Pinging Phone (GO) at $goIp to announce tablet...")
                         socket = Socket()
                         socket.connect(InetSocketAddress(info.groupOwnerAddress, 5289), 2000)
                     } catch (e: Exception) {
@@ -105,7 +116,126 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
                     }
                 }.start()
             }
+        } else {
+            AppLog.d("WifiDirectManager: onConnectionInfoAvailable: group not formed yet")
         }
+    }
+
+    private var groupInfoRetries = 0
+
+    @SuppressLint("MissingPermission")
+    override fun onGroupInfoAvailable(group: android.net.wifi.p2p.WifiP2pGroup?) {
+        if (group != null) {
+            groupInfoRetries = 0
+            val ssid = group.networkName
+            val psk = group.passphrase ?: ""
+            val bssid = getWifiDirectMac(group.`interface`)
+            val isOwner = group.isGroupOwner
+            
+            // Try to get frequency via reflection (hidden field in WifiP2pGroup)
+            var frequency = 0
+            try {
+                // Try several common field names used by different OEMs
+                val fieldNames = arrayOf("frequency", "mFrequency")
+                for (name in fieldNames) {
+                    try {
+                        val field = group.javaClass.getDeclaredField(name)
+                        field.isAccessible = true
+                        frequency = field.getInt(group)
+                        if (frequency > 0) break
+                    } catch (e: Exception) {}
+                }
+            } catch (e: Exception) {}
+            
+            val band = if (frequency > 4000) "5GHz" else if (frequency > 0) "2.4GHz" else "unknown"
+            AppLog.i("WifiDirectManager: onGroupInfoAvailable: SSID: $ssid, BSSID: $bssid, GO: $isOwner, Freq: $frequency MHz ($band)")
+            
+            if (ssid.isNotEmpty()) {
+                // Wait for the IP address to be assigned to the interface
+                Thread {
+                    try {
+                        var ip = getWifiDirectIp(group.`interface`)
+                        var retries = 0
+                        while (ip == null && retries < 15) {
+                            AppLog.d("WifiDirectManager: Waiting for IP on interface ${group.`interface`} (Attempt ${retries + 1}/15)...")
+                            Thread.sleep(1000)
+                            ip = getWifiDirectIp(group.`interface`)
+                            retries++
+                        }
+                        
+                        val finalIp = ip ?: "192.168.49.1"
+                        AppLog.i("WifiDirectManager: SUCCESS - Providing credentials to HandshakeManager. SSID=$ssid, IP=$finalIp")
+                        onCredentialsReady?.invoke(ssid, psk, finalIp, bssid)
+                    } catch (e: Exception) {
+                        AppLog.e("WifiDirectManager: Error in credential delivery thread", e)
+                    }
+                }.start()
+            }
+        } else {
+            if (groupInfoRetries < 20) {
+                groupInfoRetries++
+                AppLog.w("WifiDirectManager: Group info was null! Retrying in 1s (Attempt $groupInfoRetries/20)...")
+                handler.postDelayed({
+                    manager?.requestGroupInfo(channel, this)
+                }, 1000L)
+            } else {
+                AppLog.e("WifiDirectManager: FATAL: Group info remained null after 20 retries.")
+            }
+        }
+    }
+
+    private fun getWifiDirectMac(ifaceName: String?): String {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                if (ifaceName != null && iface.name != ifaceName) continue
+                if (ifaceName == null && !iface.name.contains("p2p")) continue
+                
+                val mac = iface.hardwareAddress
+                if (mac != null) {
+                    val sb = StringBuilder()
+                    for (i in mac.indices) {
+                        sb.append(String.format("%02X%s", mac[i], if (i < mac.size - 1) ":" else ""))
+                    }
+                    return sb.toString()
+                }
+            }
+        } catch (e: Exception) {}
+        return "00:00:00:00:00:00"
+    }
+
+    private fun getWifiDirectIp(ifaceName: String?): String? {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                val addresses = iface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val addr = addresses.nextElement()
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        // Prioritize explicitly requested interface, or generic p2p interfaces
+                        if (ifaceName != null && iface.name == ifaceName) return addr.hostAddress
+                        if (iface.name.contains("p2p")) return addr.hostAddress
+                    }
+                }
+            }
+            // Fallback pass: return any valid IPv4 that isn't loopback
+            val interfaces2 = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces2.hasMoreElements()) {
+                val iface = interfaces2.nextElement()
+                val addresses = iface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val addr = addresses.nextElement()
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        return addr.hostAddress
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            AppLog.e("WifiDirectManager: Error getting local IP", e)
+        }
+        return null
     }
 
     @SuppressLint("MissingPermission")
@@ -211,11 +341,144 @@ class WifiDirectManager(private val context: Context) : WifiP2pManager.Connectio
         }, 800L)
     }
 
+    @SuppressLint("MissingPermission")
+    fun startNativeAaQuietHost() {
+        val mgr = manager
+        val ch = channel
+        
+        if (mgr == null || ch == null) {
+            AppLog.e("WifiDirectManager: Cannot start Quiet Host - manager ($mgr) or channel ($ch) is null!")
+            return
+        }
+
+        // Ensure WiFi is enabled (Required for P2P)
+        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+        if (!wifiManager.isWifiEnabled) {
+            AppLog.i("WifiDirectManager: WiFi is disabled but needed for Native AA. Attempting to enable...")
+            if (Build.VERSION.SDK_INT < 29) {
+                @Suppress("DEPRECATION")
+                wifiManager.isWifiEnabled = true
+            } else {
+                Toast.makeText(context, "Native AA requires Wi-Fi. Please turn it on.", Toast.LENGTH_LONG).show()
+                // We return for now, the user must turn it on. In the future we could open settings.
+                return
+            }
+            // Wait a bit for WiFi to wake up
+            handler.postDelayed({ startNativeAaQuietHost() }, 2000L)
+            return
+        }
+
+        AppLog.i("WifiDirectManager: startNativeAaQuietHost() requested. Removing old group if any...")
+        mgr.removeGroup(ch, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() { 
+                AppLog.d("WifiDirectManager: removeGroup SUCCESS. Creating quiet group...")
+                delayedCreateQuietGroup(0) 
+            }
+            override fun onFailure(reason: Int) { 
+                AppLog.d("WifiDirectManager: removeGroup failed (reason=$reason). This is expected if no group existed. Creating quiet group anyway...")
+                delayedCreateQuietGroup(0) 
+            }
+        })
+    }
+
+    private fun delayedCreateQuietGroup(retryCount: Int) {
+        handler.postDelayed({ createQuietGroup(retryCount) }, 500L)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun createQuietGroup(retryCount: Int) {
+        val mgr = manager ?: return
+        val ch = channel ?: return
+        
+        AppLog.i("WifiDirectManager: Attempting createGroup for Native AA (Attempt $retryCount)...")
+
+        // 5GHz Hack: Try to force 5GHz band using reflection
+        try {
+            val configClass = Class.forName("android.net.wifi.p2p.WifiP2pConfig")
+            val config = configClass.newInstance()
+            
+            val groupOwnerIntentField = configClass.getDeclaredField("groupOwnerIntent")
+            groupOwnerIntentField.isAccessible = true
+            groupOwnerIntentField.set(config, 15)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val setGroupOperatingBandMethod = configClass.getMethod("setGroupOperatingBand", Int::class.javaPrimitiveType)
+                setGroupOperatingBandMethod.invoke(config, 2) // 2 = 5GHz band
+            }
+
+            // The hidden method signature is createGroup(Channel, WifiP2pConfig, ActionListener)
+            val createGroupMethod = mgr.javaClass.getMethod("createGroup", 
+                WifiP2pManager.Channel::class.java, 
+                configClass, 
+                WifiP2pManager.ActionListener::class.java)
+                
+            createGroupMethod.invoke(mgr, ch, config, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    AppLog.i("WifiDirectManager: 5GHz Forced createGroup SUCCESS!")
+                    isGroupOwner = true
+                    handler.postDelayed({
+                        mgr.requestConnectionInfo(ch, this@WifiDirectManager)
+                        mgr.requestGroupInfo(ch, this@WifiDirectManager)
+                    }, 1000L)
+                }
+                override fun onFailure(reason: Int) {
+                    val reasonStr = getP2pErrorString(reason)
+                    AppLog.w("WifiDirectManager: 5GHz Forced createGroup failed ($reasonStr), falling back to standard...")
+                    standardCreateGroup(mgr, ch, retryCount)
+                }
+            })
+            return
+        } catch (e: Exception) {
+            AppLog.w("WifiDirectManager: 5GHz Hack failed: ${e.message}. Using standard createGroup.")
+        }
+
+        standardCreateGroup(mgr, ch, retryCount)
+    }
+
+    private fun getP2pErrorString(reason: Int): String {
+        return when(reason) {
+            0 -> "ERROR (Internal Error)"
+            1 -> "P2P_UNSUPPORTED"
+            2 -> "BUSY (System is busy, retry needed)"
+            else -> "UNKNOWN ($reason)"
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun standardCreateGroup(mgr: WifiP2pManager, ch: WifiP2pManager.Channel, retryCount: Int) {
+        mgr.createGroup(ch, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                AppLog.i("WifiDirectManager: Standard createGroup SUCCESS!")
+                isGroupOwner = true
+                handler.postDelayed({
+                    mgr.requestConnectionInfo(ch, this@WifiDirectManager)
+                    mgr.requestGroupInfo(ch, this@WifiDirectManager)
+                }, 1000L)
+            }
+            override fun onFailure(reason: Int) {
+                val reasonStr = getP2pErrorString(reason)
+                if (reason == 2 && retryCount < 3) {
+                    AppLog.w("WifiDirectManager: createGroup failed ($reasonStr), removing group and retrying in 2s...")
+                    mgr.removeGroup(ch, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() { delayedCreateQuietGroup(retryCount + 1) }
+                        override fun onFailure(r: Int) { delayedCreateQuietGroup(retryCount + 1) }
+                    })
+                } else {
+                    AppLog.e("WifiDirectManager: createQuietGroup failed completely! Reason: $reasonStr")
+                }
+            }
+        })
+    }
+
     fun stop() {
+        AppLog.i("WifiDirectManager: Stopping and cleaning up...")
         handler.removeCallbacks(discoveryRunnable)
         try { context.unregisterReceiver(receiver) } catch (e: Exception) {}
         if (isGroupOwner) {
-            manager?.removeGroup(channel, null)
+            manager?.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() { AppLog.d("WifiDirectManager: Final group removal success") }
+                override fun onFailure(reason: Int) { AppLog.d("WifiDirectManager: Final group removal failed: $reason") }
+            })
         }
     }
 }

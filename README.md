@@ -53,11 +53,31 @@ You can trigger a wireless connection attempt using an Android Intent. This is u
 adb shell am start -a android.intent.action.VIEW -d "headunit://connect?ip=192.168.1.25"
 ```
 
+## Planned
+- Theme-Options for Colors and Images, Car-Logos
+- Change settings in Projection
+- Remove Native-SSL Libraries to reduce filesize
+
 ## Known Issues
 - **Google Maps in Portrait Mode:** Touch interactions (searching, scrolling) within Google Maps may not work as expected when using Portrait Mode on some devices. **Fix:** Try reducing the **Pixel density (DPI)** setting to **below 200** (e.g., 190) in the app settings. This often restores full functionality.
 - **Wireless Connection Drops:** If the connection drops frequently, disable **"WiFi Assistant"** or **"Switch between networks"** in your phone's WiFi settings to prevent it from killing the connection due to "no internet."
 
 ## Changelog
+### v.2.2.0-beta3
+- Added: Native AA. 🎉  Warning! This will only work on a limited amount of headunits! Most Android devices do not support connecting 2 Android devices via Bluetooth which is essential for this to work.
+- Try to fix connection problems on WiFi
+- Added: Intent and routine for starting the app directly to self mode
+- Added: Force Scale Option for older devices on surface view
+- Added: New Immersive Fullscreen with avoided notch area. This should fix problems for eg. Pixel Phones
+- Enhanced: Video Decoder Error Handling
+- Added: 2 new WiFi-Options for a WiFi-Direct. Thanks to @andrecuellar
+- Added Japanese language 🇯🇵 thanks to @mattyann87
+- Enhanced: Media Session Announcement. Thanks to @irwanrhmn
+- Added: Pip-Support
+- Added: Google Nearby Support
+- Added: 4K in select
+- New App-Icon without text for better visibility
+
 ### v.2.1.1
 - Fixed: Layout crash on Android 4.2
 - Added: Enable Hotspot option. Note: This will not work on every device. Especially after Android 13!
