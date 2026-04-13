@@ -79,6 +79,13 @@ class MainActivity : BaseActivity() {
         val appSettings = Settings(this)
         requestedOrientation = appSettings.screenOrientation.androidOrientation
 
+        // Sync UsbAttachedActivity component state with the auto-start USB setting.
+        // This covers first install, app updates (manifest may reset component state),
+        // and ensures the USB modal only appears when the user has opted in.
+        lifecycleScope.launch(Dispatchers.IO) {
+            Settings.setUsbAttachedActivityEnabled(applicationContext, appSettings.autoStartOnUsb)
+        }
+
         // Start main service immediately to handle connections and wireless server
         val serviceIntent = Intent(this, AapService::class.java)
         ContextCompat.startForegroundService(this, serviceIntent)
@@ -220,10 +227,18 @@ class MainActivity : BaseActivity() {
     private fun requestPermissions() {
         val requiredPermissions = mutableListOf(
             Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.ACCESS_FINE_LOCATION
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
         )
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requiredPermissions.add(Manifest.permission.BLUETOOTH_ADVERTISE)
+            requiredPermissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            requiredPermissions.add(Manifest.permission.BLUETOOTH_SCAN)
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requiredPermissions.add(Manifest.permission.NEARBY_WIFI_DEVICES)
             requiredPermissions.add(Manifest.permission.POST_NOTIFICATIONS)
         }
 

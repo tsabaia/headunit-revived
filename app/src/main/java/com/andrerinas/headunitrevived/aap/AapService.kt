@@ -64,6 +64,7 @@ import com.andrerinas.headunitrevived.utils.VpnControl
 import com.andrerinas.headunitrevived.utils.SilentAudioPlayer
 import com.andrerinas.headunitrevived.connection.CarKeyReceiver
 import com.andrerinas.headunitrevived.connection.NativeAaHandshakeManager
+import com.andrerinas.headunitrevived.connection.NearbyManager
 import com.andrerinas.headunitrevived.utils.Settings
 import java.net.ServerSocket
 
@@ -93,6 +94,7 @@ class AapService : Service(), UsbReceiver.Listener {
     private var nightModeManager: NightModeManager? = null
     private var wifiDirectManager: WifiDirectManager? = null
     private var nativeAaHandshakeManager: NativeAaHandshakeManager? = null
+    private var nearbyManager: NearbyManager? = null
     private var carKeyReceiver: CarKeyReceiver? = null
     private var silentAudioPlayer: SilentAudioPlayer? = null
     private var wirelessServer: WirelessServer? = null
@@ -114,6 +116,9 @@ class AapService : Service(), UsbReceiver.Listener {
     private var wifiReadyCallback: ConnectivityManager.NetworkCallback? = null
     private var wifiReadyTimeoutJob: Job? = null
     private var wifiModeInitialized = false
+
+    private var activeWifiMode = -1
+    private var activeHelperStrategy = -1
 
     /**
      * Partial wake lock acquired when the service starts from boot/screen-on.
@@ -432,16 +437,30 @@ class AapService : Service(), UsbReceiver.Listener {
 
         nativeAaHandshakeManager = NativeAaHandshakeManager(this, serviceScope)
         wifiDirectManager = WifiDirectManager(this)
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                nearbyManager = NearbyManager(this, serviceScope) { socket ->
+                    serviceScope.launch(Dispatchers.IO) {
+                        commManager.connect(socket)
+                    }
+                }
+            } catch (e: Exception) {
+                AppLog.e("AapService: Failed to init NearbyManager: ${e.message}")
+            }
+        }
+        
         initWifiModeWithOptionalWait()
         wifiDirectManager?.setCredentialsListener { ssid, psk, ip, bssid ->
-            AppLog.i("AapService: Received WiFi credentials from manager (SSID=$ssid, IP=$ip). Updating HandshakeManager.")
-            nativeAaHandshakeManager?.updateWifiCredentials(ssid, psk, ip, bssid)
+            val settings = App.provide(this).settings
+            if (settings.wifiConnectionMode == 3) {
+                AppLog.i("AapService: Received WiFi credentials from manager (SSID=$ssid, IP=$ip). Updating NativeAaHandshakeManager.")
+                nativeAaHandshakeManager?.updateWifiCredentials(ssid, psk, ip, bssid)
+            } else {
+                AppLog.d("AapService: WiFi credentials received, but not in Native AA mode. Skipping HandshakeManager update.")
+            }
         }
 
-        // Start the BT handshake server if enabled
-        if (App.provide(this).settings.wifiConnectionMode == 3) {
-            nativeAaHandshakeManager?.start()
-        }
 
         carKeyReceiver = CarKeyReceiver()
         silentAudioPlayer = SilentAudioPlayer(this)
@@ -512,6 +531,9 @@ class AapService : Service(), UsbReceiver.Listener {
             commManager.connectionState.collect { state ->
                 when (state) {
                     is CommManager.ConnectionState.Connected -> onConnected()
+                    is CommManager.ConnectionState.HandshakeComplete -> {
+                        launchAapProjectionActivity()
+                    }
                     is CommManager.ConnectionState.TransportStarted -> {
                         hasEverConnected = true
                         accessoryHandshakeFailures = 0
@@ -580,6 +602,9 @@ class AapService : Service(), UsbReceiver.Listener {
         }
 
         serviceScope.launch { commManager.startHandshake() }
+    }
+
+    private fun launchAapProjectionActivity() {
         startActivity(AapProjectionActivity.intent(this).apply {
             putExtra(AapProjectionActivity.EXTRA_FOCUS, true)
             addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
@@ -938,41 +963,74 @@ class AapService : Service(), UsbReceiver.Listener {
         initWifiMode()
     }
 
-    /** Starts [WirelessServer] if the user has configured server WiFi mode (mode == 2). */
-    private fun initWifiMode() {
+    /** Starts [WirelessServer] if the user has configured server WiFi mode. */
+    private fun initWifiMode(force: Boolean = false) {
         val settings = App.provide(this).settings
         val mode = settings.wifiConnectionMode
+        val strategy = settings.helperConnectionStrategy
 
-        AppLog.i("AapService: Initializing WiFi Mode: $mode")
+        if (!force && mode == activeWifiMode && strategy == activeHelperStrategy) {
+            AppLog.d("AapService: WiFi Mode $mode (Strategy: $strategy) is already initialized.")
+            return
+        }
+
+        AppLog.i("AapService: Initializing WiFi Mode: $mode (Strategy: $strategy)")
 
         // 0. Clean up existing wireless state before re-initializing
         stopWirelessServer()
         networkDiscovery?.stop()
+        nearbyManager?.stop()
+        nativeAaHandshakeManager?.stop()
 
         // Mode 1: Auto (Headunit Server), Mode 2: Helper (Wireless Launcher), Mode 3: Native AA
         if (mode == 1 || mode == 2 || mode == 3) {
             startWirelessServer()
 
-            // 1. Hotspot Logic (Only for Mode 1 and 2)
-            if ((mode == 1 || mode == 2) && settings.autoEnableHotspot) {
-                Thread {
-                    AppLog.i("AapService: Auto-enabling hotspot...")
-                    HotspotManager.setHotspotEnabled(this, true)
-                }.start()
+            // Mode 1: Headunit Server Mode
+            if (mode == 1) {
+                // Auto discovery for standard server mode via NSD/mDNS
+                startDiscovery(oneShot = false)
             }
 
-            // 2. WiFi Direct Logic (Mode 3 needs Quiet Host, Mode 1/2 needs Visibility)
-            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-            if (wifiManager.isWifiEnabled) {
-                if (mode == 3) {
-                    wifiDirectManager?.startNativeAaQuietHost()
-                } else if (mode == 1 || mode == 2) {
-                    wifiDirectManager?.makeVisible()
+            // Mode 2: Wireless Helper Mode
+            if (mode == 2) {
+                when (strategy) {
+                    0 -> startDiscovery(oneShot = false) // Common Wifi (NSD)
+                    1 -> { // WiFi Direct (P2P)
+                        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+                        if (wifiManager.isWifiEnabled) {
+                            wifiDirectManager?.makeVisible()
+                        }
+                    }
+                    2 -> { // Google Nearby
+                        nearbyManager?.start()
+                    }
+                    3, 4 -> { /* Host/Passive - just wait for connection on WirelessServer port */ }
                 }
-            } else {
-                AppLog.i("AapService: WiFi is disabled, skipping Wi-Fi Direct initialization.")
+                
+                // Hotspot logic for Helper mode if enabled
+                if (settings.autoEnableHotspot) {
+                    Thread {
+                        AppLog.i("AapService: Auto-enabling hotspot for Helper mode...")
+                        HotspotManager.setHotspotEnabled(this, true)
+                    }.start()
+                }
+            }
+
+            // Mode 3: Native AA Wireless
+            if (mode == 3) {
+                val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+                if (wifiManager.isWifiEnabled) {
+                    // Start WiFi Direct as a "quiet host" (P2P Group for phone to join)
+                    wifiDirectManager?.startNativeAaQuietHost()
+                }
+                // Start the official Bluetooth handshake servers
+                nativeAaHandshakeManager?.start()
             }
         }
+        
+        activeWifiMode = mode
+        activeHelperStrategy = strategy
     }
 
     private fun acquireWifiLock() {
@@ -1061,6 +1119,7 @@ class AapService : Service(), UsbReceiver.Listener {
         stopForeground(true)
         stopWirelessServer()
         wifiDirectManager?.stop()
+        nearbyManager?.stop()
         mediaSession?.isActive = false
         mediaSession?.release()
         mediaSession = null
@@ -1124,8 +1183,13 @@ class AapService : Service(), UsbReceiver.Listener {
             ACTION_START_SELF_MODE       -> startSelfMode()
             ACTION_START_WIRELESS        -> initWifiMode()
             ACTION_START_WIRELESS_SCAN   -> {
-                val mode = App.provide(this).settings.wifiConnectionMode
-                if (mode != 3) {
+                val settings = App.provide(this).settings
+                val mode = settings.wifiConnectionMode
+                val strategy = settings.helperConnectionStrategy
+                if (mode == 2 && strategy == 2) {
+                    AppLog.i("AapService: Force-starting Nearby discovery from UI")
+                    nearbyManager?.start()
+                } else if (mode != 3) {
                     startDiscovery(oneShot = (mode != 2))
                 }
             }
@@ -1137,6 +1201,13 @@ class AapService : Service(), UsbReceiver.Listener {
                     // Ensure WiFi Direct is ready before poking
                     initWifiMode()
                     nativeAaHandshakeManager?.manualPoke(mac)
+                }
+            }
+            ACTION_NEARBY_CONNECT         -> {
+                val endpointId = intent?.getStringExtra(EXTRA_ENDPOINT_ID)
+                if (endpointId != null) {
+                    AppLog.i("AapService: Connecting to Nearby endpoint $endpointId")
+                    nearbyManager?.connectToEndpoint(endpointId)
                 }
             }
             ACTION_DISCONNECT            -> {
@@ -1465,9 +1536,15 @@ class AapService : Service(), UsbReceiver.Listener {
      */
     private fun startWirelessServer() {
         if (wirelessServer != null) return
-        val mode = App.provide(this).settings.wifiConnectionMode
-        wirelessServer = WirelessServer().apply { start(registerNsd = (mode != 3)) }
-        if (mode != 3) {
+        val settings = App.provide(this).settings
+        val mode = settings.wifiConnectionMode
+        val strategy = settings.helperConnectionStrategy
+
+        // Only register NSD for Headunit Server (Auto) or Helper (Common Wifi NSD)
+        val shouldRegisterNsd = mode == 1 || (mode == 2 && strategy == 0)
+
+        wirelessServer = WirelessServer().apply { start(registerNsd = shouldRegisterNsd) }
+        if (shouldRegisterNsd) {
             startDiscovery()
         }
     }
@@ -1479,7 +1556,13 @@ class AapService : Service(), UsbReceiver.Listener {
      *                used for the "auto WiFi" reconnect case.
      */
     private fun startDiscovery(oneShot: Boolean = false) {
-        if (App.provide(this).settings.wifiConnectionMode == 3) return
+        val settings = App.provide(this).settings
+        val mode = settings.wifiConnectionMode
+        val strategy = settings.helperConnectionStrategy
+
+        if (mode == 3) return
+        // Allow discovery for Strategy 0 (NSD), 3 (Phone Hotspot) and 4 (Headunit Hotspot)
+        if (mode == 2 && strategy != 0 && strategy != 3 && strategy != 4) return
         if (commManager.isConnected || (wirelessServer == null && !oneShot)) return
 
         networkDiscovery?.stop()
@@ -1527,6 +1610,8 @@ class AapService : Service(), UsbReceiver.Listener {
     }
 
     private fun stopWirelessServer() {
+        activeWifiMode = -1
+        activeHelperStrategy = -1
         networkDiscovery?.stop()
         networkDiscovery = null
         wirelessServer?.stopServer()
@@ -1941,6 +2026,7 @@ class AapService : Service(), UsbReceiver.Listener {
         const val ACTION_START_WIRELESS_SCAN       = "com.andrerinas.headunitrevived.ACTION_START_WIRELESS_SCAN"
         const val ACTION_STOP_WIRELESS             = "com.andrerinas.headunitrevived.ACTION_STOP_WIRELESS"
         const val ACTION_NATIVE_AA_POKE            = "com.andrerinas.headunitrevived.ACTION_NATIVE_AA_POKE"
+        const val ACTION_NEARBY_CONNECT             = "com.andrerinas.headunitrevived.ACTION_NEARBY_CONNECT"
         const val ACTION_CHECK_USB                 = "com.andrerinas.headunitrevived.ACTION_CHECK_USB"
         const val ACTION_STOP_SERVICE              = "com.andrerinas.headunitrevived.ACTION_STOP_SERVICE"
         const val ACTION_DISCONNECT                = "com.andrerinas.headunitrevived.ACTION_DISCONNECT"
@@ -1968,5 +2054,6 @@ class AapService : Service(), UsbReceiver.Listener {
         private const val HIBERNATE_WAKE_THRESHOLD_MS = 60_000L
 
         const val EXTRA_MAC = "extra_mac"
+        const val EXTRA_ENDPOINT_ID = "extra_endpoint_id"
     }
 }
