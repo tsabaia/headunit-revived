@@ -16,6 +16,7 @@ import com.andrerinas.headunitrevived.decoder.VideoDecoder
 import android.media.AudioManager
 import com.andrerinas.headunitrevived.aap.AapMessage
 import com.andrerinas.headunitrevived.aap.protocol.messages.SensorEvent
+import com.andrerinas.headunitrevived.aap.protocol.proto.MediaPlayback
 import java.net.Socket
 
 /**
@@ -110,6 +111,11 @@ class CommManager(
 
     /** Callback for audio focus state changes (isPlaying). Set by AapService. */
     var onAudioFocusStateChanged: ((Boolean) -> Unit)? = null
+
+    /** Now-playing metadata from the phone (AAP media channel). Set by AapService. */
+    var onAaMediaMetadata: ((MediaPlayback.MediaMetaData) -> Unit)? = null
+    /** Playback status from the phone (AAP media channel), includes current position. */
+    var onAaPlaybackStatus: ((MediaPlayback.MediaPlaybackStatus) -> Unit)? = null
 
     /** @Volatile: written on IO thread, read on Main and IO threads. */
     @Volatile private var _transport: AapTransport? = null
@@ -210,7 +216,10 @@ class CommManager(
             _connection = SocketAccessoryConnection(socket, context)
 
             if (_connection?.connect() ?: false) {
-                settings.saveLastConnection(type = Settings.CONNECTION_TYPE_WIFI, ip = socket.inetAddress?.hostAddress ?: "")
+                // [FIX] Don't overwrite NEARBY connection type with WIFI + localhost IP (::1)
+                if (socket !is NearbySocket) {
+                    settings.saveLastConnection(type = Settings.CONNECTION_TYPE_WIFI, ip = socket.inetAddress?.hostAddress ?: "")
+                }
                 _connectionState.emit(ConnectionState.Connected)
             } else {
                 _connectionState.emit(ConnectionState.Disconnected())
@@ -279,7 +288,17 @@ class CommManager(
 
                 if (_transport == null) {
                     val audioManager = context.getSystemService(Application.AUDIO_SERVICE) as AudioManager
-                    _transport = AapTransport(audioDecoder, videoDecoder, audioManager, settings, _backgroundNotification, context, externalSsl = aapSslContext)
+                    _transport = AapTransport(
+                        audioDecoder,
+                        videoDecoder,
+                        audioManager,
+                        settings,
+                        _backgroundNotification,
+                        context,
+                        externalSsl = aapSslContext,
+                        onAaMediaMetadata = { meta -> onAaMediaMetadata?.invoke(meta) },
+                        onAaPlaybackStatus = { status -> onAaPlaybackStatus?.invoke(status) }
+                    )
                     _transport!!.onQuit = { isClean -> transportedQuited(isClean) }
                     _transport!!.onAudioFocusStateChanged = { isPlaying -> onAudioFocusStateChanged?.invoke(isPlaying) }
                 }

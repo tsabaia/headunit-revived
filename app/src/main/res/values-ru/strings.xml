@@ -287,6 +287,7 @@
     <string name="success">Успешно</string>
     <string name="failed">Ошибка</string>
     <string name="failed_start_android_auto">Не удалось запустить Android Auto</string>
+    <string name="failed_self_mode_android10">Автономный режим (Self-mode), вероятно, заблокирован Google на Android 10 (AA 16.4+). См. README.</string>
     <string name="android_auto_starting">Запуск Android Auto…</string>
     <string name="connection_interrupted">Соединение потеряно</string>
     <string name="connection_interrupted_detail">Повторное подключение…</string>
@@ -338,6 +339,9 @@
     <!-- Navigation notifications -->
     <string name="show_navigation_notifications">Уведомления навигации</string>
     <string name="show_navigation_notifications_description">Показывать «Через X метров Y» и текущую улицу в уведомлениях (для отладки)</string>
+    <string name="media_session_aa_status_placeholder">Подключено</string>
+    <string name="sync_media_session_aa_metadata">Текущий трек AA в медиасессии</string>
+    <string name="sync_media_session_aa_metadata_description">Показывать с телефона название, исполнителя, длительность и обложку в системной медиасессии и медиа-уведомлении</string>
     <string name="nav_notification_channel_name">Навигация</string>
     <string name="nav_notification_channel_description">Подсказки маршрута от Android Auto</string>
     <string name="nav_notification_title_format">Через %1$d м — %2$s</string>
@@ -446,6 +450,7 @@
     </string-array>
 
     <string name="select_nearby_device">Выберите устройство поблизости</string>
+    <string name="nearby_device_found">Устройство поблизости найдено</string>
     <string name="connecting_to_nearby">Подключение к %s…</string>
 
     <string name="exit_dialog_title">Выйти из Android Auto</string>
@@ -456,4 +461,9 @@
     <string name="audio_latency_multiplier">Множитель задержки звука</string>
     <string name="audio_latency_multiplier_description">Настройка размера аудио-буфера (Меньше = меньше задержка, Больше = меньше заиканий)</string>
     <string name="audio_queue_capacity">Емкость аудио-очереди (Backpressure)</string>
+    <string name="media_action_previous">Предыдущий</string>
+    <string name="media_action_play">Воспроизвести</string>
+    <string name="media_action_pause">Пауза</string>
+    <string name="media_action_next">Следующий</string>
+    <string name="error_usb_permission_failed">Системная ошибка: Не удалось запросить диалоговое окно разрешения USB.</string>
 </resources>
