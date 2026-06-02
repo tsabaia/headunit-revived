@@ -34,13 +34,13 @@ class UsbAttachedActivity : Activity() {
         DeviceIntent(intent).device?.let { return it }
 
         val usbManager = getSystemService(Context.USB_SERVICE) as UsbManager
-        val devices = usbManager.deviceList.values.toList()
+        val devices = usbManager.deviceList.values.filter { UsbDeviceCompat.isAndroidDevice(it) }
         return if (devices.size == 1) {
             val device = devices[0]
             AppLog.i("No USB device in intent extras, falling back to single device from deviceList: ${UsbDeviceCompat(device).uniqueName}")
             device
         } else {
-            AppLog.e("No USB device in intent extras and ${devices.size} devices in deviceList, cannot determine target")
+            AppLog.e("No USB device in intent extras and ${devices.size} Android devices in deviceList, cannot determine target")
             null
         }
     }
@@ -51,7 +51,10 @@ class UsbAttachedActivity : Activity() {
         AppLog.i("USB Intent: $intent")
 
         val device = resolveUsbDevice(intent)
-        if (device == null) {
+        if (device == null || !UsbDeviceCompat.isAndroidDevice(device)) {
+            if (device != null) {
+                AppLog.i("Ignoring non-Android USB device in onCreate (VID: ${device.vendorId}): ${device.deviceName}")
+            }
             finish()
             return
         }
@@ -105,7 +108,11 @@ class UsbAttachedActivity : Activity() {
             }
         }
 
-        if (settings != null && !autoStartOnUsb && !settings.isConnectingDevice(deviceCompat)) {
+        // Google VID (0x18D1) devices are almost certainly Android Auto phones or AA dongles
+        // (e.g. AAWireless). Always attempt the AOA switch for these — skipping them would
+        // break dongle users who haven't explicitly configured allowlists.
+        val isGoogleDevice = device.vendorId == 0x18D1
+        if (!isGoogleDevice && settings != null && !autoStartOnUsb && !settings.isConnectingDevice(deviceCompat)) {
             AppLog.i("Skipping device ${deviceCompat.uniqueName} (not allowed and USB auto-start disabled)")
             finish()
             return
@@ -140,7 +147,10 @@ class UsbAttachedActivity : Activity() {
         super.onNewIntent(intent)
 
         val device = resolveUsbDevice(getIntent())
-        if (device == null) {
+        if (device == null || !UsbDeviceCompat.isAndroidDevice(device)) {
+            if (device != null) {
+                AppLog.i("Ignoring non-Android USB device in onNewIntent (VID: ${device.vendorId}): ${device.deviceName}")
+            }
             finish()
             return
         }

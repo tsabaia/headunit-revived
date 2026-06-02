@@ -109,8 +109,8 @@
     <string name="debug_mode_description">Activar más registros</string>
     <string name="export_logs">Exportar registros</string>
     <string name="export_logs_description">Guardar registros para depuración</string>
-    <string name="use_native_ssl">Usar SSL nativo</string>
-    <string name="use_native_ssl_description">Usar biblioteca OpenSSL nativa (más rápido). Requiere reinicio.</string>
+
+
     <string name="not_set">No establecido</string>
     <string name="keymap_description">Cambiar asignación de teclas</string>
 
@@ -176,7 +176,7 @@
     <string name="bt_permission_denied_title">Permiso de Bluetooth requerido</string>
     <string name="bt_permission_denied_message">Se necesita el permiso de Bluetooth para seleccionar dispositivos emparejados. Concédalo en los ajustes de la app.</string>
     <string name="overlay_permission_title">Permiso de inicio en segundo plano</string>
-    <string name="overlay_permission_description">Para permitir que Headunit Revived se abra automáticamente, active "Mostrar sobre otras aplicaciones".</string>
+    <string name="overlay_permission_description">Para permitir que Headunit Revived se abra automáticamente, active \"Mostrar sobre otras aplicaciones\".</string>
     <string name="open_settings">Ajustes</string>
     <string name="wireless_connection_settings">Conexión inalámbrica</string>
     <string name="right_hand_drive">Conducción por la derecha</string>
@@ -225,10 +225,10 @@
     <string name="pref_stretch_screen_summary">Ignora la relación de aspecto para rellenar toda la pantalla (elimina las barras negras)</string>
 
     <!-- Audio Settings -->
-        <string name="forced_scale">Escalado forzado (Corrección heredada)</string>
+    <string name="forced_scale">Escalado forzado (Corrección heredada)</string>
     <string name="forced_scale_description">Corrige problemas de escalado en algunos dispositivos antiguos que usan SurfaceView. Usar solo si la imagen se ve distorsionada o desplazada.</string>
 
-<string name="category_audio">Audio</string>
+    <string name="category_audio">Audio</string>
     <string name="enable_audio_sink">Salida de audio</string>
     <string name="enable_audio_sink_description">Si se desactiva, el audio sonará en el móvil.</string>
     <string name="separate_audio_streams">Separar flujos de audio</string>
@@ -352,15 +352,19 @@
     <string name="fullscreen_status_only">Ocultar solo barra de estado</string>
     <string name="log_level">Nivel de log</string>
     <string name="log_level_description">Elija el nivel de detalle de los mensajes de log para depuración.</string>
+    <string name="log_source">Fuente de registro</string>
+    <string name="log_source_logcat">Logcat</string>
+    <string name="log_source_applog_file">Directo a archivo</string>
     <string name="start_log_capture">Iniciar captura de log</string>
     <string name="start_log_capture_description">Comienza a registrar los logs del sistema en un archivo.</string>
+    <string name="start_log_capture_in_applog_file">Los mensajes de Log se escriben en un archivo solo mientras la captura está activa</string>
     <string name="start_log_capture_in_silent">No se puede iniciar la grabación: nivel de registro silencioso seleccionado</string>
     <string name="stop_log_capture">Detener captura de log</string>
     <string name="stop_log_capture_description">Detiene la grabación y guarda el archivo de log.</string>
 
     <!-- Navigation notifications -->
     <string name="show_navigation_notifications">Notificaciones de navegación</string>
-    <string name="show_navigation_notifications_description">Mostrar "En X metros Y" y la calle actual en notificaciones (para depuración)</string>
+    <string name="show_navigation_notifications_description">Mostrar \"En X metros Y\" y la calle actual en notificaciones (para depuración)</string>
     <string name="nav_notification_channel_name">Navegación</string>
     <string name="nav_notification_channel_description">Indicaciones paso a paso de Android Auto</string>
     <string name="nav_notification_title_format">En %1$d m — %2$s</string>
@@ -488,6 +492,27 @@
     <string name="sync_media_session_aa_metadata">Pista actual de AA en la sesión multimedia</string>
     <string name="sync_media_session_aa_metadata_description">Mostrar título, artista, duración y carátula del teléfono en la sesión multimedia del sistema y en la notificación multimedia</string>
     <string name="error_usb_permission_failed">Error del sistema: Fallo al solicitar el cuadro de diálogo de permiso USB.</string>
+
+    <!-- Custom loading screen -->
+    <string name="loading_screen">Pantalla de carga</string>
+    <string name="loading_screen_default">Predeterminada</string>
+    <string name="loading_screen_custom">Personalizada</string>
+    <string name="loading_screen_dialog_title">Pantalla de carga personalizada</string>
+    <string name="loading_screen_select_file">Seleccionar archivo</string>
+    <string name="loading_screen_remove">Eliminar</string>
+    <string name="loading_screen_recommendation">Resolución recomendada: %1$dx%2$d</string>
+    <string name="loading_screen_supported_formats">Soportados: Imágenes (PNG, JPG, BMP, WEBP, GIF) \u2022 Vídeos (MP4, MKV, WEBM, 3GP) \u2022 Máx: 10 MB</string>
+    <string name="loading_screen_no_media">Sin contenido personalizado</string>
+    <string name="loading_screen_file_too_large">El archivo es demasiado grande (máx 10 MB)</string>
+    <string name="loading_screen_unsupported_format">Formato no compatible. Use un archivo de imagen o vídeo</string>
+    <string name="loading_screen_file_error">No se pudo cargar el archivo seleccionado</string>
+    <string name="loading_screen_show_text">Mostrar texto \"Android Auto está iniciando\"</string>
+    <string name="loading_screen_tap_preview">Toca para vista previa</string>
+    <string name="loading_screen_tap_to_close">Toca en cualquier lugar para cerrar</string>
+    <string name="loading_screen_keep_aspect_ratio">Mantener relación de aspecto</string>
+    <string name="loading_screen_recommended_aspect_ratio">Relación de aspecto recomendada: %1$d:%2$d</string>
+    <string name="loading_screen_tap_fullscreen_hint">Toca la vista previa para verla en pantalla completa</string>
+    <string name="loading_screen_loop_video">Repetir animaciones cortas en bucle</string>
     <string name="microphone_settings">Ajustes del micrófono</string>
     <string name="microphone_settings_description">Configura la entrada del micrófono y el procesamiento de audio.</string>
     <string name="mic_echo_canceler">Cancelación de eco (AEC)</string>
@@ -496,7 +521,18 @@
     <string name="mic_noise_suppressor_description">Intenta reducir el ruido de fondo. Desactívalo si tu voz suena apagada.</string>
     <string name="mic_auto_gain_control">Control automático de ganancia (AGC)</string>
     <string name="mic_auto_gain_control_description">Ajusta automáticamente el volumen del micrófono. Desactívalo si el volumen es inestable.</string>
+    <string name="mic_feature_unsupported">Esta función no es compatible con tu dispositivo.</string>
     <string name="bt_permission_denied">Permiso de Bluetooth denegado. No se pueden escanear dispositivos.</string>
     <string name="wifi_autostart_title">Inicio automático de WiFi</string>
     <string name="wifi_autostart_content">Conectado a %s. Pulsa para iniciar Android Auto.</string>
+
+    <!-- New strings merged from 2.3.1 -->
+    <string name="use_native_ssl">Usar SSL nativo</string>
+    <string name="use_native_ssl_description">Usar biblioteca OpenSSL nativa (más rápido). Requiere reinicio.</string>
+    <string name="bt_devices_selected">dispositivos seleccionados</string>
+    <string name="static_audio_focus">Enfoque de audio estático</string>
+    <string name="static_audio_focus_description">Fuerza al teléfono a creer que el enfoque de audio se mantiene siempre, evitando pérdidas de enrutamiento de audio en unidades principales genéricas. También realiza atenuación de volumen por software durante las indicaciones de voz de navegación.</string>
+    <string name="bluetooth_adapter_label">Adaptador Bluetooth</string>
+    <string name="bluetooth_adapter_description">Seleccione el adaptador/controlador Bluetooth que se utilizará para el protocolo de enlace. Útil para sistemas con doble Bluetooth.</string>
+    <string name="select_bt_adapter">Seleccionar adaptador Bluetooth</string>
 </resources>
