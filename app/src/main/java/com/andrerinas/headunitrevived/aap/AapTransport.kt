@@ -60,7 +60,7 @@ import javax.net.ssl.SSLEngineResult
  */
 class AapTransport(
         audioDecoder: AudioDecoder,
-        videoDecoder: VideoDecoder,
+        private val videoDecoder: VideoDecoder,
         audioManager: AudioManager,
         internal val settings: Settings,
         private val notification: BackgroundNotification,
@@ -129,11 +129,25 @@ class AapTransport(
     val isAlive: Boolean
         get() = pollThread?.isAlive ?: false
 
+    private fun triggerFocusCycleRecovery() {
+        AppLog.w("AapTransport: Requesting recovery keyframe via focus cycle.")
+        send(com.andrerinas.headunitrevived.aap.protocol.messages.VideoFocusEvent(gain = false, unsolicited = false))
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (isAlive) {
+                send(com.andrerinas.headunitrevived.aap.protocol.messages.VideoFocusEvent(gain = true, unsolicited = true))
+            }
+        }, 100)
+    }
+
     init {
         micRecorder.listener = this
         aapAudio = AapAudio(audioDecoder, audioManager, settings)
         aapVideo = AapVideo(videoDecoder, settings) {
-            send(com.andrerinas.headunitrevived.aap.protocol.messages.VideoFocusEvent(gain = true, unsolicited = true))
+            triggerFocusCycleRecovery()
+        }
+
+        videoDecoder.onDecoderError = {
+            triggerFocusCycleRecovery()
         }
     }
 
@@ -181,6 +195,8 @@ class AapTransport(
         pollThread?.quit()
         sendThread?.quit()
         aapAudio.releaseAllFocus()
+
+        videoDecoder.onDecoderError = null
 
         try {            // Don't join the poll thread from within itself — it would block for the full
             // timeout since the thread can't finish while it's waiting for itself to finish.
@@ -372,14 +388,6 @@ class AapTransport(
 
     fun send(keyCode: Int, isPress: Boolean) {
         val aapKeyCode = KeyCode.convert(keyCode)
-
-        if (keyCode == KeyEvent.KEYCODE_GUIDE) {
-            // Hack for navigation button to simulate touch
-            val action = if (isPress)
-                Input.TouchEvent.PointerAction.TOUCH_ACTION_DOWN else Input.TouchEvent.PointerAction.TOUCH_ACTION_UP
-            this.send(TouchEvent(SystemClock.elapsedRealtime(), action, 99, 444))
-            return
-        }
 
         if (keyCode == KeyEvent.KEYCODE_N) {
             val intent = Intent(AapService.ACTION_REQUEST_NIGHT_MODE_UPDATE)

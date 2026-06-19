@@ -67,7 +67,6 @@ import android.view.WindowManager
 import android.media.AudioManager
 import com.andrerinas.headunitrevived.utils.HotspotManager
 import com.andrerinas.headunitrevived.utils.VpnControl
-import com.andrerinas.headunitrevived.utils.SilentAudioPlayer
 import com.andrerinas.headunitrevived.connection.CarKeyReceiver
 import com.andrerinas.headunitrevived.connection.NativeAaHandshakeManager
 import com.andrerinas.headunitrevived.connection.NearbyManager
@@ -105,7 +104,6 @@ class AapService : Service(), UsbReceiver.Listener {
     private var nearbyManager: NearbyManager? = null
     private var wifiAutoStartReceiver: WifiAutoStartReceiver? = null
     private var carKeyReceiver: CarKeyReceiver? = null
-    private var silentAudioPlayer: SilentAudioPlayer? = null
     private var wirelessServer: WirelessServer? = null
     private var networkDiscovery: NetworkDiscovery? = null
     private var mediaSession: MediaSessionCompat? = null
@@ -717,9 +715,10 @@ class AapService : Service(), UsbReceiver.Listener {
             if (appSettings.wifiConnectionMode == 3) {
                 AppLog.i("AapService: Received WiFi credentials from manager (SSID=$ssid, IP=$ip). Updating and Triggering Poke.")
                 nativeAaHandshakeManager?.updateWifiCredentials(ssid, psk, ip, bssid)
-                // [FIX] Only auto-poke if the user didn't explicitly exit.
-                // If they did, they must click the "WiFi" button manually to poke.
-                if (!userExitedAA) {
+                if (commManager.isConnected ||
+                    commManager.connectionState.value is CommManager.ConnectionState.Connecting) {
+                    AppLog.i("AapService: USB/other session already active. Skipping auto-poke to avoid pulling phone into wireless flow.")
+                } else if (!userExitedAA) {
                     nativeAaHandshakeManager?.triggerPoke()
                 } else {
                     AppLog.i("AapService: userExitedAA is true. Skipping auto-poke.")
@@ -731,7 +730,6 @@ class AapService : Service(), UsbReceiver.Listener {
 
 
         carKeyReceiver = CarKeyReceiver()
-        silentAudioPlayer = SilentAudioPlayer(this)
 
         checkAlreadyConnectedUsb()
         registerNetworkMonitor()
@@ -887,10 +885,7 @@ class AapService : Service(), UsbReceiver.Listener {
         updateNotification()
         acquireWifiLock()
 
-        // Start silent audio hack to keep media focus (helps with steering wheel buttons)
-        if (settings.enableAudioSink) {
-            silentAudioPlayer?.start()
-        }
+        // Silent audio hack removed to prevent mixing/resampling stuttering issues
 
         // Register the comprehensive steering wheel key receiver
         if (!isCarKeyReceiverRegistered) {
@@ -934,10 +929,51 @@ class AapService : Service(), UsbReceiver.Listener {
             AppLog.i("AapService: Skipping projection launch because PiP is active")
             return
         }
-        startActivity(AapProjectionActivity.intent(this).apply {
+
+        val intent = AapProjectionActivity.intent(this).apply {
             putExtra(AapProjectionActivity.EXTRA_FOCUS, true)
-            addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-        })
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        }
+
+        val canOverlay = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && AndroidSettings.canDrawOverlays(this)
+        when (ActivityLaunchPolicy.chooseLaunchStrategy(Build.VERSION.SDK_INT, canOverlay)) {
+            ActivityLaunchPolicy.LaunchStrategy.DIRECT -> {
+                try { startActivity(intent) }
+                catch (e: Exception) { AppLog.e("Projection launch failed: ${e.message}") }
+            }
+            ActivityLaunchPolicy.LaunchStrategy.OVERLAY -> {
+                if (!launchViaOverlayTrampoline(intent)) {
+                    AppLog.w("Projection overlay trampoline failed, trying direct")
+                    try { startActivity(intent) }
+                    catch (e: Exception) { AppLog.e("Projection direct fallback failed: ${e.message}") }
+                }
+            }
+            ActivityLaunchPolicy.LaunchStrategy.NOTIFICATION -> launchProjectionViaNotification(intent)
+        }
+    }
+
+    private fun launchProjectionViaNotification(launchIntent: Intent) {
+        val piFlags = PendingIntent.FLAG_UPDATE_CURRENT or
+            (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        val fullScreenPi = PendingIntent.getActivity(this, PROJECTION_LAUNCH_NOTIFICATION_ID, launchIntent, piFlags)
+
+        val notification = NotificationCompat.Builder(this, App.bootStartChannel)
+            .setSmallIcon(R.drawable.ic_stat_aa)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.android_auto_starting))
+            .setFullScreenIntent(fullScreenPi, true)
+            .setContentIntent(fullScreenPi)
+            .setAutoCancel(true)
+            .build()
+
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(PROJECTION_LAUNCH_NOTIFICATION_ID, notification)
+        serviceScope.launch {
+            delay(5000)
+            nm.cancel(PROJECTION_LAUNCH_NOTIFICATION_ID)
+        }
     }
 
     private fun setupMediaSession() {
@@ -1016,8 +1052,6 @@ class AapService : Service(), UsbReceiver.Listener {
         isSwitchingToAccessory.set(false)
         releaseWifiLock()
 
-        // Cleanup steering wheel and audio focus hacks
-        silentAudioPlayer?.stop()
         // Release any permanent audio focus we may have requested when connected
         releasePermanentAudioFocus()
         if (isCarKeyReceiverRegistered) {
@@ -1657,7 +1691,11 @@ class AapService : Service(), UsbReceiver.Listener {
             }
             ACTION_DISCONNECT            -> {
                 AppLog.i("Disconnect action received.")
-                if (commManager.isConnected) commManager.disconnect()
+                // disconnect() has its own early-return when already Disconnected,
+                // and unlike the previous isConnected guard it also covers the
+                // Connecting state, so the UI cancel paths work before handshake
+                // completes.
+                commManager.disconnect()
             }
             ACTION_CONNECT_SOCKET        -> {
                 // Caller already invoked commManager.connect(socket); the connectionState
@@ -2209,6 +2247,14 @@ class AapService : Service(), UsbReceiver.Listener {
     }
 
     private fun launchViaOverlayTrampoline(): Boolean {
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra(MainActivity.EXTRA_LAUNCH_SOURCE, "Boot auto-start")
+        }
+        return launchViaOverlayTrampoline(launchIntent)
+    }
+
+    private fun launchViaOverlayTrampoline(launchIntent: Intent): Boolean {
         val wm = getSystemService(WINDOW_SERVICE) as WindowManager
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -2226,15 +2272,11 @@ class AapService : Service(), UsbReceiver.Listener {
         val view = View(this)
         return try {
             wm.addView(view, params)
-            val launchIntent = Intent(this, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                putExtra(MainActivity.EXTRA_LAUNCH_SOURCE, "Boot auto-start")
-            }
             startActivity(launchIntent)
-            AppLog.i("Boot auto-start: startActivity called from overlay context")
+            AppLog.i("Overlay trampoline: startActivity succeeded")
             true
         } catch (e: Exception) {
-            AppLog.e("Boot auto-start: overlay trampoline failed: ${e.message}")
+            AppLog.e("Overlay trampoline failed: ${e.message}")
             false
         } finally {
             try { wm.removeView(view) } catch (_: Exception) {}
@@ -2520,6 +2562,7 @@ class AapService : Service(), UsbReceiver.Listener {
         val scanningState = MutableStateFlow(false)
 
         private const val BOOT_START_NOTIFICATION_ID = 42
+        private const val PROJECTION_LAUNCH_NOTIFICATION_ID = 43
 
         // Service action strings used with startService() and sendBroadcast()
         const val ACTION_START_SELF_MODE           = "com.andrerinas.headunitrevived.ACTION_START_SELF_MODE"
