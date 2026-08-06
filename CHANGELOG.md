@@ -1,4 +1,37 @@
 # Changelog
+### v.3.2.2-upcoming
+- Fixing location jumping, especially on lower speeds
+- Fixing screen flicker again in video decoder
+- Fix/video throughput telemetry and keyframe lockout, thanks to @o-jcardenass
+- Fix Steering Wheel Buttons not working anymore
+- added new native mode without WiFi-Direct creation, thanks to @o-jcardenass
+
+### v.3.2.1
+- Fixing new welcome screen, thanks to @andrecuellar
+- Fixing HW decoding on kitkat thanks to @o-jcardenass
+- Fixing 2 Fatal errors shown in play console
+- fix: move mic timestamp inside encrypted payload (byte 4), thanks to @bruno303
+- making native mode work better and on more devices, thanks to @o-jcardenass
+
+### v.3.2.0
+- Don't grab audio focus on connect in dynamic mode, thanks to @bnayahu
+- Acquire transient audio focus while AA audio plays, thanks to @bnayahu
+- Add GitHub Actions CI (build + unit tests), thanks to @bnayahu
+- Fix picture stuck if used within DUDU's PiP, thanks to @MrEAlderson
+- Fix(wifi): use public API for frequency, thanks to @DerTeufel
+- Added pixel aspect ratio setting, thanks to @axel92b
+- Added more audio features to gain audio focus and work with dsp headunits as setting
+- Added display over other apps permission for better compatibility with some headunits, espacially with self mode
+- Fix transport get stucked on multiple reconnects, thanks to @notathf
+- Add car keys support for FYT headunits, thanks to @MrEAlderson
+- Added Option to flip projection horizontal for Headup-Displays
+- Recover automatically from post-first-frame video display stalls, thanks to @andrecuellar
+- Settings and Onboarding Wizard redesign for better usability, thanks to @andrecuellar
+- Fixing mulitiple WiFi-Direct and Native AA connection issues, thanks to @o-jcardenass, @andrecuellar and @notathf
+- Various fixes PR, thanks to @MrEAlderson
+- Selfmode on AA 17.4 now connects to the headunit dev server or opens the AA settings to start it
+- Rename the app to Open Headunit because of confusion with Headunit Reloaded (HUR)
+
 ### v.3.1.1
 - Reduce pressure on sensor events like night and gps and start/stop these events in onConnected, onDisconnect and onDestroy
 - Merged ffmpeg PR #625 by @mmwtl. This added ffmpeg software decoder for h265, which old devives could benefit a lot. Thank you!
@@ -181,7 +214,7 @@
 
 ### v.1.14.3
 - New Feature: Added **App Shortcuts** for quick Connect/Disconnect. Now compatible with Samsung Modes & Routines.
-- New Feature: Registered HURev as an official system navigation provider (Category: Maps).
+- New Feature: Registered OpenHU as an official system navigation provider (Category: Maps).
 - Improvement: Added `headunit://disconnect` intent for remote session termination.
 - Fixed: Resolved potential app freezes during long-running sessions by optimizing memory hygiene and FIFO handling.
 - Compatibility: Improved support for Amazon Fire Tablets and devices without GPS hardware by marking hardware features as optional.
@@ -198,7 +231,7 @@
 - Major Improvement: Audio focus and routing overhaul. Added `MediaSession` support and immediate focus response to phone. Fixes issues where background apps on the tablet would block Android Auto audio.
 - Improvement: Robust Task Switching. Leaving the app via Home button or clicking the Launcher icon no longer breaks the connection. Music continues in background, and clicking the icon/notification correctly returns to the projection.
 - New Feature: Enhanced Key Debugger ("Key-Sniffer"). Prominent display of all key events, including special characters (ö, ü, ß) and proprietary steering wheel intents (MTC, FYT).
-- New Feature: Official Navigation App Registration. HURev is now recognized as a navigation provider (`geo:`, `google.navigation:`, `android.intent.action.NAVIGATE`). Compatible with hardware "NAV" buttons.
+- New Feature: Official Navigation App Registration. OpenHU is now recognized as a navigation provider (`geo:`, `google.navigation:`, `android.intent.action.NAVIGATE`). Compatible with hardware "NAV" buttons.
 - Bugfix: Removed redundant "Already connected" and "Reconnection required" alerts for a smoother user experience.
 - Localization: All new strings translated into 10 languages.
 

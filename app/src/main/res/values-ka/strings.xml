@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Headunit Revived</string>
+    <string name="app_name">Open Headunit</string>
     <string name="menu">მენიუ</string>
     <string name="settings">პარამეტრები</string>
 
@@ -12,7 +12,7 @@
     <string name="video">Android Auto</string>
     <string name="self_mode">ავტონომიური რეჟიმი</string>
     <string name="to_android_auto">Android Auto-ზე გადასვლა</string>
-    <string name="title">Headunit Revived</string>
+    <string name="title">Open Headunit</string>
     <string name="remove">წაშლა</string>
     <string name="usb">USB</string>
     <string name="wifi">WiFi</string>
@@ -173,9 +173,11 @@
     <string name="usb_auto_connect">USB ავტო-კავშირი</string>
     <string name="usb_auto_connect_description">ცნობილ USB მოწყობილობასთან ავტომატური დაკავშირება აპლიკაციის გახსნისას.</string>
     <string name="auto_start_bt_label">ავტო-გაშვება Bluetooth-ით</string>
-    <string name="auto_start_bt_description">Headunit Revived-ის ავტომატური გახსნა კონკრეტული Bluetooth მოწყობილობის დაკავშირებისას.</string>
+    <string name="auto_start_bt_description">Open Headunit-ის ავტომატური გახსნა კონკრეტული Bluetooth მოწყობილობის დაკავშირებისას.</string>
     <string name="listen_for_usb_devices_label">USB მოწყობილობების მონიტორინგი</string>
     <string name="listen_for_usb_devices_description">USB მოწყობილობის შეერთებისას Android სისტემური მოთხოვნის ჩვენება.</string>
+    <string name="show_toast_messages">Toast შეტყობინებების ჩვენება</string>
+    <string name="show_toast_messages_description">სტატუსის შეტყობინებების ჩვენება დაკავშირების, გათიშვის და რეჟიმის შეცვლისას.</string>
     <string name="auto_start_usb_label">ავტო-გაშვება USB-ით</string>
     <string name="auto_start_usb_description">აპლიკაციის ავტომატური გახსნა და დაკავშირების მცდელობა USB მოწყობილობის შეერთებისას</string>
     <string name="auto_start_settings">ავტო-გაშვების პარამეტრები</string>
@@ -188,7 +190,7 @@
     <string name="select_bt_device">აირჩიეთ Bluetooth მოწყობილობა</string>
     <string name="bt_device_not_set">არ არის მითითებული</string>
     <string name="auto_start_wifi_label">ავტო-გაშვება WiFi-ით</string>
-    <string name="auto_start_wifi_description">Headunit Revived-ის ავტომატური გახსნა კონკრეტულ WiFi SSID-თან დაკავშირებისას.</string>
+    <string name="auto_start_wifi_description">Open Headunit-ის ავტომატური გახსნა კონკრეტულ WiFi SSID-თან დაკავშირებისას.</string>
     <string name="auto_start_wifi_ssid_label">WiFi SSID</string>
     <string name="auto_start_wifi_ssid_description">დაკავშირება მხოლოდ ამ WiFi SSID-თან ყოფნისას</string>
     <string name="auto_start_wifi_warning">მოძველებული ფუნქცია: შესაძლოა საიმედოდ არ იმუშაოს Android 8+ ვერსიებზე ფონური შეზღუდვების გამო. დარწმუნდით, რომ აპლიკაცია ამოღებულია ელემენტის ოპტიმიზაციიდან.</string>
@@ -197,7 +199,7 @@
     <string name="bt_permission_denied_title">საჭიროა Bluetooth ნებართვა</string>
     <string name="bt_permission_denied_message">დაწყვილებული მოწყობილობების ასარჩევად საჭიროა Bluetooth ნებართვა. გთხოვთ, მიანიჭოთ იგი აპლიკაციის პარამეტრებიდან.</string>
     <string name="overlay_permission_title">ფონური გაშვების ნებართვა</string>
-    <string name="overlay_permission_description">იმისათვის, რომ Headunit Revived ავტომატურად გაიხსნას Bluetooth-ის დაკავშირებისას, გთხოვთ, შემდეგ ეკრანზე ჩართოთ ნებართვა \"ჩვენება სხვა აპების ზემოთ\" (Display over other apps).</string>
+    <string name="overlay_permission_description">იმისათვის, რომ Open Headunit ავტომატურად გაიხსნას Bluetooth-ის დაკავშირებისას, გთხოვთ, შემდეგ ეკრანზე ჩართოთ ნებართვა \"ჩვენება სხვა აპების ზემოთ\" (Display over other apps).</string>
     <string name="open_settings">პარამეტრები</string>
     <string name="right_hand_drive">მარჯვენასაჭიანი მართვა</string>
     <string name="right_hand_drive_description">ინტერფეისის მორგება მარჯვენა საჭის მქონე ავტომობილებისთვის</string>
@@ -248,6 +250,8 @@
     <string name="pref_stretch_screen_summary">უგულებელყოფს გვერდების თანაფარდობას მთელი ეკრანის შესავსებად (აქრობს შავ ზოლებს)</string>
     <string name="forced_scale">იძულებითი მასშტაბირება (Legacy Fix)</string>
     <string name="forced_scale_description">ასწორებს მასშტაბირების პრობლემებს ზოგიერთ ძველ მოწყობილობაზე SurfaceView-ს გამოყენებისას. გამოიყენეთ მხოლოდ იმ შემთხვევაში, თუ გამოსახულება დამახინჯებულია ან გადაადგილებულია.</string>
+    <string name="hud_mirroring">HUD რეჟიმი (ჰორიზონტალური სარკე)</string>
+    <string name="hud_mirroring_description">ჰორიზონტალურად ასახავს ეკრანს საქარე მინის რეკლამისთვის (Head-Up Display). მოითხოვს TextureView ან GLES20 ხედვის რეჟიმს (არ მუშაობს SurfaceView-თან).</string>
 
     <string name="category_audio">აუდიო</string>
     <string name="enable_audio_sink">აუდიო მიმღები (Audio Sink)</string>
@@ -258,6 +262,8 @@
     <string name="separate_audio_streams_description">მუსიკის, ზარებისა და შეტყობინებების აუდიო არხების განცალკევება ერთი მულტიმედიური ნაკადის ნაცვლად (შეიძლება გამართულად არ იმუშაოს ზოგიერთ მოწყობილობაზე).</string>
     <string name="use_aac_audio">AAC აუდიოს გამოყენება</string>
     <string name="use_aac_audio_description">AAC კოდეკის გამოყენება აუდიოსთვის გამტარუნარიანობის დასაზოგად (ექსპერიმენტული).</string>
+    <string name="attach_hw_dsp_equalizer">აპარატურული DSP ეკვალაიზერის ტრიგერი</string>
+    <string name="attach_hw_dsp_equalizer_description">ამატებს ფიქტიურ ეკვალაიზერის ეფექტს აუდიო სესიას აპარატურული DSP მარშრუტიზაციის იძულებით ჩართვისთვის. დატოვეთ გამორთული თუ იყენებთ ViPER4Android / ViperFX-ს ან თუ ხმა დახშულია ძველ Android ვერსიებზე.</string>
     <string name="audio_volume_offset">აუდიო ხმის ოფსეტი (Offset)</string>
     <string name="media_volume_offset">მედიის ხმის ოფსეტი</string>
     <string name="assistant_volume_offset">ასისტენტის ხმის ოფსეტი</string>
@@ -283,9 +289,9 @@
 
     <string name="category_info">ინფორმაცია</string>
     <string name="about">შესახებ &amp; მხარდაჭერა</string>
-    <string name="about_description">მიიღეთ მეტი ინფორმაცია Headunit Revived-ის შესახებ</string>
+    <string name="about_description">მიიღეთ მეტი ინფორმაცია Open Headunit-ის შესახებ</string>
     <string name="version">ვერსია</string>
-    <string name="about_title">Headunit Revived-ის შესახებ</string>
+    <string name="about_title">Open Headunit-ის შესახებ</string>
     <string name="copyright">© 2025-%d André Rinas</string>
 
     <string name="disclaimer_title">უსაფრთხოება &amp; პასუხისმგებლობა</string>
@@ -295,7 +301,7 @@
         <b>1. ყურადღება გზაზე</b><br/>
         მართვის დროს ამ პროგრამის გამოყენებამ შეიძლება გაგიფანტოთ ყურადღება და შექმნას საფრთხე. ყოველთვის მიანიჭეთ უპირატესობა უსაფრთხო მართვას და დაიცავით საგზაო მოძრაობის ყველა ადგილობრივი წესი. გამოიყენეთ ეს აპლიკაცია მხოლოდ მაშინ, როდესაც ეს უსაფრთხოა.<br/><br/>
         <b>2. პასუხისმგებლობის შეზღუდვა</b><br/>
-        Headunit Revived მოწოდებულია "როგორც არის" (as is) ყოველგვარი გარანტიის გარეშე. დეველოპერები არ იღებენ პასუხისმგებლობას რაიმე სახის ავარიაზე, თქვენი ავტომობილის/მოწყობილობის დაზიანებაზე ან სამართლებრივ შედეგებზე, რომლებიც გამოწვეულია ამ პროგრამის გამოყენებით.<br/><br/>
+        Open Headunit მოწოდებულია "როგორც არის" (as is) ყოველგვარი გარანტიის გარეშე. დეველოპერები არ იღებენ პასუხისმგებლობას რაიმე სახის ავარიაზე, თქვენი ავტომობილის/მოწყობილობის დაზიანებაზე ან სამართლებრივ შედეგებზე, რომლებიც გამოწვეულია ამ პროგრამის გამოყენებით.<br/><br/>
         <b>3. დამოუკიდებლობა</b><br/>
         ეს პროექტი არის დამოუკიდებელი ღია კოდის მქონე ინიციატივა და არ არის ასოცირებული, დამტკიცებული ან დაკავშირებული Google LLC-სთან ან Android Auto ბრენდთან.
     ]]></string>
@@ -328,7 +334,7 @@
     <string name="export_settings_downloads">ჩამოტვირთვებში (Downloads) შენახვა</string>
     <string name="export_settings_app_folder">აპის სარეზერვო საქაღალდეში შენახვა</string>
     <string name="import_settings">პარამეტრების იმპორტი</string>
-    <string name="import_settings_description">პარამეტრების აღდგენა Headunit Revived-ის სარეზერვო ასლიდან</string>
+    <string name="import_settings_description">პარამეტრების აღდგენა Open Headunit-ის სარეზერვო ასლიდან</string>
     <string name="import_settings_choose_file">აირჩიეთ სარეზერვო ფაილი</string>
     <string name="import_settings_downloads">იმპორტი ჩამოტვირთვებიდან (Downloads)</string>
     <string name="import_settings_app_folder">იმპორტი აპის სარეზერვო საქაღალდიდან</string>
@@ -346,8 +352,8 @@
     <string name="no_file_picker_title">ფაილების მენეჯერი ვერ მოიძებნა</string>
     <string name="no_file_picker_message">ამ მოწყობილობას არ აქვს თავსებადი ფაილების მენეჯერი. ამის ნაცვლად შეგიძლიათ გამოიყენოთ ჩამოტვირთვები ან აპის სარეზერვო საქაღალდე.</string>
     <string name="no_settings_backups_title">სარეზერვო ასლები ვერ მოიძებნა</string>
-    <string name="no_settings_backups_message">აპის სარეზერვო საქაღალდეში Headunit Revived-ის ასლები ვერ მოიძებნა. ჯერ გააკეთეთ ექსპორტი ამ საქაღალდეში, შემდეგ კი სცადეთ იმპორტი.</string>
-    <string name="no_settings_backups_downloads_message">ჩამოტვირთვებში Headunit Revived-ის სარეზერვო ასლები ვერ მოიძებნა. ჯერ გააკეთეთ ექსპორტი ჩამოტვირთვებში, შემდეგ კი სცადეთ იმპორტი.</string>
+    <string name="no_settings_backups_message">აპის სარეზერვო საქაღალდეში Open Headunit-ის ასლები ვერ მოიძებნა. ჯერ გააკეთეთ ექსპორტი ამ საქაღალდეში, შემდეგ კი სცადეთ იმპორტი.</string>
+    <string name="no_settings_backups_downloads_message">ჩამოტვირთვებში Open Headunit-ის სარეზერვო ასლები ვერ მოიძებნა. ჯერ გააკეთეთ ექსპორტი ჩამოტვირთვებში, შემდეგ კი სცადეთ იმპორტი.</string>
     <string name="share_settings_backup">პარამეტრების სარეზერვო ასლის გაზიარება</string>
     <string name="logs_exported">ლოგების ექსპორტი შესრულებულია</string>
     <string name="log_saved_to">ლოგი შენახულია აქ:\n%s</string>
@@ -370,7 +376,7 @@
     <string name="wifi_disconnect_toast">Android Auto გაითიშა: თუ იყენებთ უ線ო კავშირს, გამორთეთ ფუნქციები \"Switch between networks\" ან \"Network acceleration\" ტელეფონის WiFi პარამეტრებიდან</string>
     <string name="reset_usb_option">USB კავშირის გადატვირთვა</string>
     <string name="reset_usb_timeout">USB მოწყობილობა ვერ მოიძებნა. გთხოვთ, შეამოწმოთ კავშირი.</string>
-    <string name="notification_service_running">Headunit Revived აქტიურია</string>
+    <string name="notification_service_running">Open Headunit აქტიურია</string>
     <string name="notification_projection_active">Android Auto პროეცირებულია</string>
     <string name="shortcut_connect_title">დაკავშირება</string>
     <string name="shortcut_connect_desc">ავტო-კავშირი ბოლო ტელეფონთან</string>
@@ -574,4 +580,129 @@
     <string name="software_video_decoder_device">მოწყობილობის MediaCodec</string>
 
     <string name="btn_show_qr">QR კოდის ჩვენება</string>
+    <string name="renderer_fallback_surface">ვიდეო მუდმივად იყინებოდა, ამიტომ ამ სესიისთვის ჩვენება გადაერთო SurfaceView-ზე. თუ სტაბილურია, პარამეტრებში დააყენეთ ხედვის რეჟიმი SurfaceView-ზე.</string>
+    <string name="dpi_resolution_over_panel_warning">თქვენ მიერ არჩეული გარჩევადობა (%1$s) თქვენს პანელზე მაღალია. ის შეზღუდულია %2$s-მდე და DPI სწორედ ამისთვის გამოითვლება. თუ ცუდად გამოიყურება, გამოიყენეთ რეკომენდებული გარჩევადობა (%2$s).</string>
+    <string name="renderer_confirm_question">ხედავთ Android Auto-ს ეკრანს?</string>
+    <string name="renderer_confirm_yes">დიახ</string>
+    <string name="renderer_confirm_switch">რენდერერის შეცვლა</string>
+    <string name="renderer_switched_to">რენდერერი: %1$s</string>
+
+    <string name="self_mode_overlay_permission_description">ავტონომიური რეჟიმის ფონურ რეჟიმში საიმედოდ გასაშვებად, გთხოვთ, შემდეგ ეკრანზე ჩართოთ ნებართვა „სხვა აპებზე ჩვენება“.</string>
+
+    <string name="settings_tab_basic">ძირითადი</string>
+    <string name="settings_tab_advanced">დამატებითი</string>
+    <string name="settings_search_hint">პარამეტრების ძებნა</string>
+    <string name="connection_mode">კავშირის რეჟიმი</string>
+    <string name="connection_kind_usb_cable">USB კაბელი (პირდაპირი)</string>
+    <string name="connection_kind_usb_wireless_adapter">USB უსადენო ადაპტერი</string>
+    <string name="connection_kind_wifi">WiFi</string>
+    <string name="connection_kind_unset">არ არის მითითებული</string>
+    <string name="onb_next">შემდეგი</string>
+    <string name="onb_skip">გამოტოვება</string>
+    <string name="onb_ready_finish">დასრულება</string>
+    <string name="onb_welcome_title">კეთილი იყოს თქვენი მობრძანება Open Headunit-ში</string>
+    <string name="onb_welcome_body">ეს სწრაფი გამართვა ასკანირებს თქვენს მოწყობილობას და ირჩევს ვიდეოს, ეკრანისა და ბნელი რეჟიმის საუკეთესო პარამეტრებს. ყველაფრის შეცვლა მოგვიანებით პარამეტრებში შეგიძლიათ.</string>
+    <string name="onb_safety_title">უპირველესად უსაფრთხოება</string>
+    <string name="onb_safety_accept">წავიკითხე და ვეთანხმები პირობებს</string>
+    <string name="onb_connection_title">როგორ უკავშირდებით?</string>
+    <string name="onb_connection_help">აირჩიეთ, როგორ უკავშირდება თქვენი ტელეფონი. ეს პარამეტრების ეკრანს მხოლოდ თქვენთვის რელევანტურ ვარიანტებზე ამახვილებს.</string>
+    <string name="onb_connection_cable_detail">ტელეფონი პირდაპირ მონიტორშია ჩართული USB კაბელით. უსადენო ვარიანტები დამალული რჩება.</string>
+    <string name="onb_connection_adapter_detail">USB დონგლი აკავშირებს კაბელს უსადენო კავშირთან. უსადენო ვარიანტები ნაჩვენებია.</string>
+    <string name="onb_connection_wifi_detail">ტელეფონი უკავშირდება WiFi-ით.</string>
+    <string name="onb_display_title">ეკრანი</string>
+    <string name="onb_display_detected">აღმოჩენილი პანელი: %1$d x %2$d px, %3$d dpi, აპარატურა %4$s.</string>
+    <string name="onb_display_size_label">ეკრანის ზომა</string>
+    <string name="onb_display_orientation_label">ორიენტაცია</string>
+    <string name="onb_display_apply">რეკომენდებული პარამეტრების გამოყენება</string>
+    <string name="onb_display_result">გამოყენებულია: %1$s, %2$d dpi, %3$s, %4$s ხედი.</string>
+    <string name="onb_appearance_title">იერსახე</string>
+    <string name="onb_appearance_theme_label">აპლიკაციის თემა</string>
+    <string name="onb_theme_auto">ავტო</string>
+    <string name="onb_theme_light">ღია</string>
+    <string name="onb_theme_dark">ბნელი</string>
+    <string name="onb_appearance_night_label">ბნელი რეჟიმი (Android Auto)</string>
+    <string name="onb_night_auto">ავტომატური</string>
+    <string name="onb_night_day">დღე</string>
+    <string name="onb_night_night">ღამე</string>
+    <string name="onb_night_light_sensor_available">აღმოჩენილია სინათლის სენსორი, ამიტომ ავტომატურ რეჟიმს შეუძლია გარემო განათებას მიჰყვეს.</string>
+    <string name="onb_night_no_light_sensor">სინათლის სენსორი ვერ მოიძებნა, ამიტომ ავტომატური რეჟიმი მიჰყვება მზის ამოსვლასა და ჩასვლას.</string>
+    <string name="onb_ready_title">ყველაფერი მზადაა</string>
+    <string name="onb_ready_summary">კავშირი: %1$s\nგაფართოება: %2$s\nკოდეკი: %3$s\n\nყველაფრის ზუსტად მორგება პარამეტრებში შეგიძლიათ.</string>
+    <string name="onb_language_help">აირჩიეთ აპლიკაციის ენა.</string>
+    <string name="connection_kind_usb">USB</string>
+    <string name="onb_connection_usb_detail">ტელეფონი USB-ით არის დაკავშირებული: პირდაპირი კაბელით ან USB უსადენო ადაპტერით.</string>
+    <string name="onb_more_appearance">იერსახის დამატებითი პარამეტრები</string>
+    <string name="onb_automation_title">ავტომატიზაცია</string>
+    <string name="onb_automation_help">აირჩიეთ, როგორ გაეშვას და დაუკავშირდეს აპლიკაცია დამოუკიდებლად. ავტო-კავშირის პარამეტრები გახსენით პრიორიტეტული რიგის გადასათრევად.</string>
+    <string name="onb_gps_title">მდებარეობა</string>
+    <string name="onb_gps_help">რომელი GPS გამოიყენოს Android Auto-მ ნავიგაციისთვის?</string>
+    <string name="onb_gps_this_device">ეს მოწყობილობა</string>
+    <string name="onb_gps_phone">დაკავშირებული ტელეფონი</string>
+    <string name="onb_do_it_later">მოგვიანებით</string>
+    <string name="onb_display_dpi_label">Android Auto-ს ზომა</string>
+    <string name="onb_dpi_small">პატარა</string>
+    <string name="onb_dpi_medium">საშუალო</string>
+    <string name="onb_dpi_large">დიდი</string>
+    <string name="onb_appearance_more_hint">მუქი რეჟიმის დამატებით პარამეტრებს პარამეტრებში იპოვით.</string>
+    <string name="onb_automation_more_hint">დამატებით პარამეტრებს ავტომატური დაკავშირებისა და ავტომატური გაშვების პარამეტრებში იპოვით.</string>
+    <string name="onb_dpi_help">მაღალი DPI ზრდის Android Auto-ს ხატულებსა და ტექსტს, ამიტომ ეკრანზე ნაკლები ეტევა. დაბალი DPI ამცირებს მათ და მეტი ეტევა. მოქმედებს Android Auto-ს დაკავშირებისას.</string>
+    <string name="onb_change_later">ამის შეცვლა მოგვიანებით პარამეტრებში შეგიძლიათ.</string>
+    <string name="dpi_automatic">ავტომატური</string>
+    <string name="dpi_automatic_desc">მოწყობილობის სიმკვრივის გამოყენება</string>
+    <string name="onb_conn_usb_label">USB (ან ადაპტერი)</string>
+    <string name="onb_connection_self_detail">ავტონომიური რეჟიმი უშვებს Android Auto-ს ამ მოწყობილობაზე ტელეფონის დაკავშირების გარეშე.</string>
+    <string name="connection_kind_all">ყველა</string>
+    <string name="onb_connection_all_detail">აჩვენებს როგორც USB, ისე WiFi პარამეტრებს.</string>
+    <string name="onb_connection_warning">კავშირის ტიპის არჩევა მალავს შეუსაბამო პარამეტრებს როგორც ძირითად, ისე გაფართოებულ ჩანართში. ისევ სანახავად, მოგვიანებით აირჩიეთ სხვა რეჟიმი კავშირის პარამეტრებში.</string>
+    <string name="resolution_recommended_format">%1$s (რეკომენდებული)</string>
+    <string name="resolution_high_bandwidth_format">%1$s · მაღალი გამტარუნარიანობა</string>
+    <string name="resolution_too_high_title">გარჩევადობა ეკრანზე მაღალია</string>
+    <string name="resolution_too_high_message">ეს თქვენს პანელზე მხარდაჭერილ მაჩვენებელზე მაღალია. გამოსახულება შეზღუდულია იმით, რისი ჩვენებაც თქვენს პანელს შეუძლია (%1$s), ამიტომ უფრო მაღალი გარჩევადობა მხოლოდ მეტ გამტარუნარიანობას ხარჯავს ხარისხის გაუმჯობესების გარეშე.</string>
+    <string name="resolution_high_bandwidth_title">საჭიროა მეტი გამტარუნარიანობა</string>
+    <string name="resolution_high_bandwidth_message">ეს გარჩევადობა გაცილებით მეტ გამტარუნარიანობას ხარჯავს და საჭიროებს მდგრад კავშირს: კარგ 5GHz WiFi-ს ან სტაბილურ USB-ს. თუ შეფერხებას შეამჩნევთ, აირჩიეთ დაბალი გარჩევადობა.</string>
+    <string name="resolution_use_anyway">მაინც გამოყენება</string>
+    <string name="resolution_use_recommended">რეკომენდებულის გამოყენება</string>
+    <string name="dpi_automatic_desc_format">იყენებს მოწყობილობის სიმკვრივეს (%1$d DPI)</string>
+    <string name="dpi_input_hint">DPI</string>
+    <string name="onb_dpi_huge">უზარმაზარი</string>
+    <string name="onb_vehicle_title">თქვენი მანქანა</string>
+    <string name="onb_vehicle_input_hint">მარკა ან სახელი</string>
+    <string name="onb_vehicle_help_aa">ეს სახელი იგზავნება Android Auto-ში. ის ჩანს ტელეფონის კავშირების ისტორიაში და Android Auto-ს მისალმების ეკრანზე.</string>
+    <string name="onb_vehicle_help_advanced">მანქანის დამატებითი დეტალები შეგიძლიათ დააკონფიგუროთ ჩანართში დამატებითი. ჩვენ არ ვიყენებთ ამ მონაცემებს; ისინი იგზავნება მხოლოდ Android Auto-ში, რადგან ის ამას მოითხოვს.</string>
+    <string name="onb_summary_vehicle_format">მანქანა: %1$s</string>
+
+    <string name="support">პრობლემის შეტყობინება</string>
+    <string name="support_description">GitHub-ზე ხარვეზების ძებნა ან შეტყობინება</string>
+    <string name="support_title">პრობლემის შეტყობინება</string>
+    <string name="support_help">თუ წაიქეცით ხარვეზში ან პრობლემაში, გთხოვთ, ჯერ მოძებნოთ იგი GitHub-ის საკითხების სიაში. თუ ჯერ არავის შეუტყობინებია ამის შესახებ, გახსენით ახალი საკითხი და აღწერეთ: რა ხდება, რა მონიტორი გაქვთ და როგორ შეიძლება პრობლემის გამეორება.</string>
+    <string name="support_open_issues">GitHub-ის საკითხების გვერდის გახსნა</string>
+    <string name="support_scan_qr">ან დაასკანირეთ ეს QR კოდი, რათა გახსნათ საკითხების სია სხვა მოწყობილობაზე.</string>
+    <string name="support_github_account_warning">შენიშვნა: საკითხის შესაქმნელად საჭიროა უფასო GitHub ანგარიში.</string>
+    <string name="onb_ready_extras_title">დასრულებამდე შეგიძლიათ ასევე გამართოთ:</string>
+    <string name="onb_extra_loading_desc">სახეობრივი სურათი, რომელიც ჩანს მანქანის დაკავშირების დროს</string>
+
+    <string name="support_rules_button">შეტყობინების წესები</string>
+    <string name="support_rules_english_desc">გთხოვთ, პრობლემა ყოველთვის ინგლისურად აღწეროთ. ეს ის ერთი ენაა, რომელსაც პროექტის შემქმნელი და აქ მომხმარეთა უმეტესობა იზიარებს, ხოლო ნაირენოვანი ძაფი სწრაფად გადაიქცევა ბაბილონის გოდოლად, სადაც ვერავინ ვერ ეხმარება ვერავის. არავინ გასამართლებთ — არც თქვენს ინგლისურს, არც ჩაწერის სტილს, ამიტომ ნუ ინერვიულებთ შეცდომებზე. თუ გამოგადგებათ, მთარგმნელი, Google Translate ან DeepL, ან ხელოვნური ინტელექტი, ChatGPT ან Claude, დაგეხმარებათ ინგლისურად გამართულად ჩამოაყალიბოთ გზავნილი.</string>
+    <string name="support_rules_device_title">აღწერეთ, რომელ მოწყობილობაზე მუშაობს აპი</string>
+    <string name="support_rules_device_desc">Android Auto-ს გამომჩენი მოწყობილობის (თქვენი მონიტორის ან ეკრანის) Android ვერსია, ასევე მწარმოებელი და მოდელი, თუ იცით.</string>
+    <string name="support_rules_connection_title">მიუთითეთ, როგორ უკავშირდებით</string>
+    <string name="support_rules_connection_desc">USB კაბელი, USB უსადენო ადაპტერი, WiFi Direct, WiFi (headunit server) ან Self Mode. თუ კავშირი უსადენოა, დაამატეთ ადაპტერის ან დონგლის მოდელი.</string>
+    <string name="support_rules_appversion_title">მიუთითეთ აპის ვერსია</string>
+    <string name="support_rules_appversion_desc">Open Headunit-ის ვერსია, რომელიც ნაჩვენებია შესახებ ეკრანზე.</string>
+    <string name="support_rules_logs_title">მიამაგრეთ ლოგი — პრობლემის შემდეგ დაუყოვნებლივ</string>
+    <string name="support_rules_logs_desc">გახსენით პარამეტრები, გადადით დამატებითი ჩანართზე, ჩართეთ გამართვის რეჟიმი გამართვა განყოფილებაში, გაიმეორეთ პრობლემა, შემდეგ დაუყოვნებლივ შეეხეთ ლოგების ექსპორტი, რათა ლოგი მოიცავდეს შეცდომის მომენტს და არა მხოლოდ გაშვებას. მიამაგრეთ ეს ფაილი საკითხს.</string>
+    <string name="support_rules_search_title">დუბლიკატები არ გახსნათ</string>
+    <string name="support_rules_search_desc">ჯერ მოძებნეთ არსებულ საკითხებში. თუ ღია საკითხი უკვე აღწერს თქვენს პრობლემას, კომენტარი დაამატეთ იქ ახლის გახსნის ნაცვლად. ახალი გახსენით მხოლოდ იმ შემთხვევაში, თუ არც ერთი არ ემთხვევა.</string>
+    <string name="support_rules_phone_title">ტელეფონიც მნიშვნელოვანია</string>
+    <string name="support_rules_phone_desc">თქვენი ტელეფონის მოდელი, მისი Android ვერსია და ტელეფონზე დაყენებული Android Auto-ს ვერსია. ზოგიერთი პრობლემა კონკრეტული Android Auto-ს გამოშვებით არის გამოწვეული.</string>
+    <string name="support_rules_describe_title">ნათლად აღწერეთ პრობლემა</string>
+    <string name="support_rules_describe_desc">რა გააკეთეთ, რას ელოდეთ და რეალურად რა მოხდა. ეკრანის სურათი ან მოკლე ვიდეო ძალიან გვეხმარება ვიზუალური პრობლემებისთვის.</string>
+    <string name="support_rules_oneissue_title">ერთი საკითხი — ერთი პრობლემა</string>
+    <string name="support_rules_oneissue_desc">ყოველ საკითხს ერთი პრობლემა ეძღვნება, რათა მისი თვალყურის დევნება და გამოსწორება მარტივი იყოს. დაუკავშირებელი პრობლემებისთვის გახსენით ცალკე საკითხები.</string>
+    <string name="support_rules_intro">მხოლოდ ორი რამ არის სავალდებულო. ყველა დანარჩენი სურვილისამებრ, მაგრამ ეს ძალიან აჩქარებს პრობლემის გადაჭრას.</string>
+    <string name="support_rules_section_required">სავალდებულო</string>
+    <string name="support_rules_section_recommend">რეკომენდაციები (სურვილისამებრ)</string>
+    <string name="rename_notice_title">ჩვენი სახელი იცვლება — Open Headunit</string>
+    <string name="rename_notice_message">Headunit Revived თქვენი წყალობით იზრდება და საკუთარ რაღაცად იქცევა: Open Headunit. ახალ სახელს მომდევნო განახლებების განმავლობაში თანდათან შემოვიღებთ, ამიტომ ზოგან ძველ სახელს ჯერ კიდევ დაინახავთ.\n\nიგივე აპი, იგივე ხალხი მის უკან, და ყველა თქვენი პარამეტრი ზუსტად ისე რჩება, როგორც არის.</string>
+    <string name="rename_notice_button">გასაგებია</string>
 </resources>
