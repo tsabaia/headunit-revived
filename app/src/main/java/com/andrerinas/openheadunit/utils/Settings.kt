@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Build
+import com.andrerinas.openheadunit.aap.PlaybackFocusPolicy
 import com.andrerinas.openheadunit.aap.protocol.proto.Control
 import com.andrerinas.openheadunit.app.UsbAttachedActivity
 import com.andrerinas.openheadunit.connection.UsbDeviceCompat
@@ -166,9 +167,18 @@ class Settings(private val context: Context) {
         APPLOG_FILE
     }
 
+    enum class LogLocation {
+        DEFAULT,
+        DOWNLOADS
+    }
+
     var logSource: LogSource
         get() = LogSource.entries.getOrElse(prefs.getInt(KEY_LOG_SOURCE, LogSource.LOGCAT.ordinal)) { LogSource.LOGCAT }
         set(value) { prefs.edit().putInt(KEY_LOG_SOURCE, value.ordinal).apply() }
+
+    var logLocation: LogLocation
+        get() = LogLocation.entries.getOrElse(prefs.getInt(KEY_LOG_LOCATION, LogLocation.DEFAULT.ordinal)) { LogLocation.DEFAULT }
+        set(value) { prefs.edit().putInt(KEY_LOG_LOCATION, value.ordinal).apply() }
 
     /** Whether log capture should be active across restarts. Default: false (disabled). */
     var exporterCaptureEnabled: Boolean
@@ -317,6 +327,9 @@ class Settings(private val context: Context) {
 
     // Vehicle info settings (sent to phone during Android Auto handshake)
     var vehicleDisplayName: String
+        // Cosmetic: the phone shows this in its connection history and on the Android Auto
+        // welcome screen. It is not the reported manufacturer, which stays "Google" unless
+        // the user picks a real car brand — see the car step in OnboardingActivity.
         get() = prefs.getString("vehicle-display-name", "Open Headunit")!!
         set(value) { prefs.edit().putString("vehicle-display-name", value).apply() }
 
@@ -477,6 +490,16 @@ class Settings(private val context: Context) {
         get() = prefs.getBoolean("static-audio-focus", false)
         set(value) { prefs.edit().putBoolean("static-audio-focus", value).apply() }
 
+    // Whether AA playback takes system audio focus, so another local player (typically the car
+    // radio) pauses while it runs. AUTO skips it when a Bluetooth media link is up, because the
+    // A2DP sink answers our focus grab by pausing the phone that is feeding us. See
+    // PlaybackFocusPolicy for the whole story; ALWAYS and NEVER are the manual overrides.
+    var playbackFocusMode: PlaybackFocusPolicy.Mode
+        get() = PlaybackFocusPolicy.Mode.fromInt(
+            prefs.getInt("playback-focus-mode", PlaybackFocusPolicy.Mode.AUTO.value)
+        )
+        set(value) { prefs.edit().putInt("playback-focus-mode", value.value).apply() }
+
     var separateAudioStreams: Boolean
         get() = prefs.getBoolean("separate-audio-streams", false)
         set(value) { prefs.edit().putBoolean("separate-audio-streams", value).apply() }
@@ -489,8 +512,19 @@ class Settings(private val context: Context) {
         get() = prefs.getInt("audio-latency-multiplier", 8)
         set(value) { prefs.edit().putInt("audio-latency-multiplier", value).apply() }
 
+    // Chunks the audio thread may hold before it starts dropping, or 0 for no limit. Bounded by
+    // default: with no limit a link that stalls for a few hundred milliseconds hands over the
+    // backlog in one burst and every chunk of it is played, so audio ends up running that far
+    // behind the picture and never catches up. Dropping instead costs a moment of sound and keeps
+    // the two together. 0 remains selectable for anyone who prefers the gap-free audio.
+    //
+    // The bound has to clear the window we hand the phone, or we drop sound the protocol told it
+    // to send: AapControl advertises max_unacked 30 for wireless audio, so a burst that size is
+    // legal and must fit. A chunk is one AAP message and its duration follows the channel's
+    // config: around 20ms on 48kHz stereo media, several times that on the 16kHz mono guidance
+    // channel, so this cannot be stated in milliseconds from here.
     var audioQueueCapacity: Int
-        get() = prefs.getInt("audio-queue-capacity", 0)
+        get() = prefs.getInt("audio-queue-capacity", 50)
         set(value) { prefs.edit().putInt("audio-queue-capacity", value).apply() }
 
     var useAacAudio: Boolean
@@ -836,6 +870,7 @@ class Settings(private val context: Context) {
         /** SharedPreferences key; also used by [AapService] for change listener. */
         const val KEY_LOG_LEVEL = "log-level"
         const val KEY_LOG_SOURCE = "log-source"
+        const val KEY_LOG_LOCATION = "log-location"
         /** Persist whether log capture should be active across restarts. */
         const val KEY_LOG_CAPTURE_ENABLED = "log-capture-enabled"
 
@@ -1317,6 +1352,15 @@ class Settings(private val context: Context) {
     var hotspotPassword: String
         get() = prefs.getString("hotspot-password", "")!!
         set(value) = prefs.edit().putString("hotspot-password", value).apply()
+
+    // Set once this device has failed to bring its own access point back up after the app took it
+    // down, which is the only way to find out that it cannot — no API answers the question in
+    // advance. From then on a user exit leaves the hotspot alone; see UserExitHotspotPolicy.
+    // Persisted rather than kept in memory because the answer is a property of the hardware and does
+    // not change between runs, and the price of re-learning it is somebody's hotspot each time.
+    var hotspotTeardownProvenUnsafe: Boolean
+        get() = prefs.getBoolean("hotspot-teardown-proven-unsafe", false)
+        set(value) = prefs.edit().putBoolean("hotspot-teardown-proven-unsafe", value).apply()
 
     var useLibusb: Boolean
         get() = prefs.getBoolean("use-libusb", false)
