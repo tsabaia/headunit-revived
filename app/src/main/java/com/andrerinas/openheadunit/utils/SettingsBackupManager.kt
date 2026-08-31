@@ -92,6 +92,7 @@ object SettingsBackupManager {
         "vehicle-model" to ValueType.STRING,
         "vehicle-year" to ValueType.STRING,
         "vehicle-id" to ValueType.STRING,
+        "vehicle-type" to ValueType.INT,
         "head-unit-make" to ValueType.STRING,
         "head-unit-model" to ValueType.STRING,
         "wifi-connection-mode" to ValueType.INT,
@@ -108,6 +109,12 @@ object SettingsBackupManager {
         // ALWAYS for anything out of range.
         "media-key-routing" to ValueType.INT,
         "separate-audio-streams" to ValueType.BOOLEAN,
+        // AudioManager.STREAM_* constants; AudioStreamTester falls back to the media stream
+        // for anything it does not recognise, so an out-of-range value cannot break playback.
+        "media-audio-stream" to ValueType.INT,
+        "guidance-audio-stream" to ValueType.INT,
+        "system-audio-stream" to ValueType.INT,
+        "use-head-unit-microphone" to ValueType.BOOLEAN,
         "mic-input-source" to ValueType.INT,
         "audio-latency-multiplier" to ValueType.INT,
         "audio-queue-capacity" to ValueType.INT,
@@ -118,6 +125,7 @@ object SettingsBackupManager {
         "attach_hw_dsp_equalizer" to ValueType.BOOLEAN,
         "use-native-ssl" to ValueType.BOOLEAN,
         "auto-start-self-mode" to ValueType.BOOLEAN,
+        "auto-connect-delay-seconds" to ValueType.INT,
         "auto-start-on-usb" to ValueType.BOOLEAN,
         "auto-start-on-boot" to ValueType.BOOLEAN,
         "auto-start-on-screen-on" to ValueType.BOOLEAN,
@@ -140,6 +148,8 @@ object SettingsBackupManager {
         "app-theme-manual-end" to ValueType.INT,
         "show-fps-counter" to ValueType.BOOLEAN,
         "monochrome-icons" to ValueType.BOOLEAN,
+        "auto-monochrome-buttons-at-night" to ValueType.BOOLEAN,
+        "home-background-night-mode" to ValueType.INT,
         "use-extreme-dark-mode" to ValueType.BOOLEAN,
         "use-gradient-background" to ValueType.BOOLEAN,
         "aa-monochrome-enabled" to ValueType.BOOLEAN,
@@ -169,10 +179,16 @@ object SettingsBackupManager {
         // Wireless hotspot host credentials and manual BSSID override.
         "hotspot-ssid" to ValueType.STRING,
         "hotspot-password" to ValueType.STRING,
+        // Which band to ask for, on either transport: a property of this unit's radio, found by
+        // trial, so it should survive the reinstall that is exactly when somebody exports their
+        // settings.
+        "hotspot-band" to ValueType.INT,
+        "wifi-direct-band" to ValueType.INT,
         "static-bssid" to ValueType.STRING,
         // Touch calibration fix and toast visibility.
         "use_measured_touch_surface" to ValueType.BOOLEAN,
-        "show-toast-messages" to ValueType.BOOLEAN
+        "show-toast-messages" to ValueType.BOOLEAN,
+        "usb-blacklist" to ValueType.STRING_SET
     )
 
     private val projectionRestartKeys = setOf(
@@ -185,9 +201,13 @@ object SettingsBackupManager {
         "software-video-decoder",
         "enable-rotary",
         "enable-audio-sink",
+        "use-head-unit-microphone",
         "static-audio-focus",
         "playback-focus-mode",
         "separate-audio-streams",
+        "media-audio-stream",
+        "guidance-audio-stream",
+        "system-audio-stream",
         "use-aac-audio",
         "attach_hw_dsp_equalizer",
         "audio-latency-multiplier",

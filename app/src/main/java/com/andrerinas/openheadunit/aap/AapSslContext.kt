@@ -1,11 +1,13 @@
 package com.andrerinas.openheadunit.aap
 
+import android.os.SystemClock
 import com.andrerinas.openheadunit.aap.protocol.messages.Messages
-import com.andrerinas.openheadunit.connection.AccessoryConnection
+import com.andrerinas.openheadunit.connection.projection.ProjectionConnection
 import com.andrerinas.openheadunit.ssl.ConscryptInitializer
 import com.andrerinas.openheadunit.ssl.NoCheckTrustManager
 import com.andrerinas.openheadunit.ssl.SingleKeyKeyManager
 import com.andrerinas.openheadunit.utils.AppLog
+import com.andrerinas.openheadunit.utils.AuditReportPolicy
 import java.nio.ByteBuffer
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLEngine
@@ -16,16 +18,16 @@ class AapSslContext(keyManager: SingleKeyKeyManager): AapSsl {
     private lateinit var sslEngine: SSLEngine
     private lateinit var txBuffer: ByteBuffer
     private lateinit var rxBuffer: ByteBuffer
-    
+
     @Volatile var isUserDisconnect = false
 
-    override fun performHandshake(connection: AccessoryConnection): Boolean {
+    override fun performHandshake(connection: ProjectionConnection): Boolean {
         if (prepare() < 0) return false
 
         // Buffer for unencrypted TLS records extracted from AAP messages.
         // We use a local queue or buffer to keep track of bytes ready for the SSLEngine.
         var pendingTlsData = ByteArray(0)
-        
+
         // Hard cap on the entire SSL phase.
         val deadline = android.os.SystemClock.elapsedRealtime() + SSL_HANDSHAKE_TIMEOUT_MS
 
@@ -90,7 +92,7 @@ class AapSslContext(keyManager: SingleKeyKeyManager): AapSsl {
                 }
             }
         }
-        
+
         val sessionId = sslEngine.session?.id
         if (sessionId != null && sessionId.isNotEmpty()) {
             AppLog.i("SSL handshake complete. Session id: ${android.util.Base64.encodeToString(sessionId, android.util.Base64.NO_WRAP)}")
@@ -104,7 +106,7 @@ class AapSslContext(keyManager: SingleKeyKeyManager): AapSsl {
      * Reads a single complete AAP message from the connection.
      * This ensures that we always respect AAP framing boundaries.
      */
-    private fun readAapMessage(connection: AccessoryConnection): ByteArray? {
+    private fun readAapMessage(connection: ProjectionConnection): ByteArray? {
         val header = ByteArray(6)
         // Read exactly 6 bytes for the AAP header
         if (connection.recvBlocking(header, 6, 2000, true) != 6) {
@@ -113,8 +115,8 @@ class AapSslContext(keyManager: SingleKeyKeyManager): AapSsl {
         }
 
         // AAP Header: [0]=Channel, [1]=Flags, [2..3]=Length (Big Endian), [4..5]=Type
-        // The length in the header includes the 4 bytes of channel/flags/length itself? 
-        // No, in Messages.kt: size + 2 is stored in bytes 2..3. 
+        // The length in the header includes the 4 bytes of channel/flags/length itself?
+        // No, in Messages.kt: size + 2 is stored in bytes 2..3.
         // So payload length = (header[2]*256 + header[3]) - 2.
         val totalLength = ((header[2].toInt() and 0xFF) shl 8) or (header[3].toInt() and 0xFF)
         val payloadLength = totalLength - 2 // Minus the 2 bytes for the type field (bytes 4-5)
@@ -238,12 +240,26 @@ class AapSslContext(keyManager: SingleKeyKeyManager): AapSsl {
     /** Reused wrapper, so the per-message allocation is zero rather than one small object. */
     private val plaintextHolder = ByteArrayWithLimit(ByteArray(0), 0)
 
+    /**
+     * Print budget for the zero-produce unwrap line, in the shape [AuditReportPolicy] governs.
+     *
+     * A single empty unwrap is legal TLS (a record can carry only handshake or alert bytes), so a
+     * handful at session start are ordinary and an unthrottled WARN would be a storm. A *run* of
+     * them mid-session is the first symptom of a desynced stream, and it used to print only at
+     * DEBUG, below the level reporter captures keep - so the log told that story from the
+     * disconnect instead of from the cause.
+     */
+    private var zeroUnwrapReports = 0
+    private var zeroUnwrapLastLogMs = 0L
+    private var zeroUnwrapSuppressed = 0
+
     override fun decrypt(start: Int, length: Int, buffer: ByteArray): ByteArrayWithLimit? {
         // The status line is built under the lock but emitted outside it. encrypt() takes this same
         // monitor, so logging in here put the whole logging pipeline — formatting, the caller-name
         // stack walk, the file writer — between the poll thread and the send thread once per
         // decrypted packet, which at verbose is several times per video frame.
         var statusLine: String? = null
+        var zeroProduceLine: String? = null
         val decrypted = synchronized(this) {
             if (!::sslEngine.isInitialized || !::rxBuffer.isInitialized || !::plaintextBuffer.isInitialized) {
                 AppLog.w("SSL Decrypt: Not initialized yet")
@@ -255,8 +271,24 @@ class AapSslContext(keyManager: SingleKeyKeyManager): AapSsl {
                 val result = sslEngine.unwrap(encrypted, rxBuffer)
                 runDelegatedTasks(result, sslEngine)
 
-                if (AppLog.LOG_VERBOSE || result.bytesProduced() == 0) {
+                if (AppLog.LOG_VERBOSE) {
                     statusLine = "SSL Decrypt Status: ${result.status}, Produced: ${result.bytesProduced()}, Consumed: ${result.bytesConsumed()}"
+                }
+                if (result.bytesProduced() == 0) {
+                    val now = SystemClock.elapsedRealtime()
+                    if (AuditReportPolicy.shouldReport(zeroUnwrapReports, zeroUnwrapLastLogMs, now)) {
+                        val suppressed = zeroUnwrapSuppressed
+                        zeroUnwrapSuppressed = 0
+                        zeroUnwrapReports++
+                        zeroUnwrapLastLogMs = now
+                        val suffix =
+                            if (suppressed > 0) " (and $suppressed more since the last report)" else ""
+                        zeroProduceLine = "SSL Decrypt: unwrap produced no application data " +
+                            "(status ${result.status}, consumed ${result.bytesConsumed()} of " +
+                            "$length bytes)$suffix"
+                    } else {
+                        zeroUnwrapSuppressed++
+                    }
                 }
 
                 val produced = result.bytesProduced()
@@ -287,7 +319,7 @@ class AapSslContext(keyManager: SingleKeyKeyManager): AapSsl {
                         isUserDisconnect = true
                     }
                 }
-                
+
                 if (!isUserDisconnect) {
                     AppLog.e("SSL Decrypt failed", e)
                 }
@@ -295,6 +327,7 @@ class AapSslContext(keyManager: SingleKeyKeyManager): AapSsl {
             }
         }
         statusLine?.let { AppLog.d(it) }
+        zeroProduceLine?.let { AppLog.w(it) }
         return decrypted
     }
 

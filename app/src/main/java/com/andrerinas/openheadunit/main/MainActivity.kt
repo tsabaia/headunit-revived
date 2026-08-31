@@ -7,7 +7,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -28,15 +32,21 @@ import com.andrerinas.openheadunit.App
 import com.andrerinas.openheadunit.R
 import com.andrerinas.openheadunit.aap.AapProjectionActivity
 import com.andrerinas.openheadunit.aap.AapService
+import com.andrerinas.openheadunit.aap.NativeTransport
 import com.andrerinas.openheadunit.app.BaseActivity
 import com.andrerinas.openheadunit.connection.CommManager
 import com.andrerinas.openheadunit.utils.AppLog
 import com.andrerinas.openheadunit.utils.AppPermissions
+import com.andrerinas.openheadunit.utils.ConnectionIssue
+import com.andrerinas.openheadunit.utils.ConnectionIssues
 import android.content.res.Configuration
 import com.andrerinas.openheadunit.utils.Settings
 import android.os.SystemClock
+import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
 import com.andrerinas.openheadunit.utils.SystemUI
 import com.bumptech.glide.Glide
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -145,6 +155,7 @@ class MainActivity : BaseActivity() {
         }
         enableEdgeToEdge()
         setContentView(R.layout.activity_main)
+        applyCustomHomeBackground()
 
         val appSettings = Settings(this)
         requestedOrientation = appSettings.screenOrientation.androidOrientation
@@ -186,11 +197,17 @@ class MainActivity : BaseActivity() {
             }
         })
 
-        if (savedInstanceState == null) {
+        val isUsbAutoStart = savedInstanceState == null &&
+            intent?.getStringExtra(EXTRA_LAUNCH_SOURCE) == "USB auto-start"
+
+        if (isUsbAutoStart) {
+            findViewById<View>(R.id.splash_overlay)?.visibility = View.GONE
+            beginAutoConnect("USB auto-start", ConnectionUiMode.OVERLAY)
+        } else if (savedInstanceState == null) {
             val elapsedSinceStart = SystemClock.elapsedRealtime() - App.appStartTime
             val targetTotalDuration = 1200L
             val actualDelay = (targetTotalDuration - elapsedSinceStart).coerceAtLeast(0L)
-            
+
             showSplashWithDelay(actualDelay)
         } else {
             findViewById<View>(R.id.splash_overlay)?.visibility = View.GONE
@@ -208,14 +225,6 @@ class MainActivity : BaseActivity() {
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
         isFinishReceiverRegistered = true
-
-        // USB auto-attach is the one auto-connect path that pre-launches MainActivity
-        // before any state transition occurs. HomeFragment-driven auto-connects will
-        // call beginAutoConnect() directly from their entry points.
-        if (savedInstanceState == null &&
-            intent?.getStringExtra(EXTRA_LAUNCH_SOURCE) == "USB auto-start") {
-            beginAutoConnect("USB auto-start", ConnectionUiMode.PILL)
-        }
 
         // Wire cancel affordances. Pill click and overlay cancel button both
         // route through the same cancellation path.
@@ -473,7 +482,7 @@ class MainActivity : BaseActivity() {
             customTextOverlay?.visibility = View.GONE
             customImage?.visibility = View.GONE
             customVideo?.visibility = View.GONE
-            overlay?.setBackgroundColor(Color.parseColor("#CC000000"))
+            overlay?.setBackgroundColor(Color.BLACK)
             return
         }
 
@@ -599,7 +608,7 @@ class MainActivity : BaseActivity() {
                         findViewById<View>(R.id.auto_connect_loading_custom_video)?.visibility = View.GONE
                         customTextOverlay?.visibility = View.GONE
                         defaultContent?.visibility = View.VISIBLE
-                        overlay?.setBackgroundColor(Color.parseColor("#CC000000"))
+                        overlay?.setBackgroundColor(Color.BLACK)
                         true
                     }
                     customVideo?.start()
@@ -611,7 +620,7 @@ class MainActivity : BaseActivity() {
             customVideo?.visibility = View.GONE
             customTextOverlay?.visibility = View.GONE
             defaultContent?.visibility = View.VISIBLE
-            overlay?.setBackgroundColor(Color.parseColor("#CC000000"))
+            overlay?.setBackgroundColor(Color.BLACK)
         }
     }
 
@@ -682,7 +691,7 @@ class MainActivity : BaseActivity() {
 
         lifecycleScope.launch {
             AapService.wifiDirectName.collectLatest { name ->
-                val isHelperMode = settings.wifiConnectionMode == 2
+                val isHelperMode = settings.wifiConnectionMode == WifiLauncherMode.HELPER
                 if (isHelperMode && name != null) {
                     tvInfo.text = "WiFi Direct: $name"
                     tvInfo.visibility = View.VISIBLE
@@ -775,7 +784,7 @@ class MainActivity : BaseActivity() {
             return
         }
 
-        if (intentAction == AapService.ACTION_START_SELF_MODE || 
+        if (intentAction == AapService.ACTION_START_SELF_MODE ||
            (intentData?.scheme == "headunit" && intentData.host == "selfmode")) {
             AppLog.i("MainActivity: Forced self-mode start requested")
             HomeFragment.forceSelfModeLaunch = true
@@ -842,7 +851,12 @@ class MainActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? android.view.inputmethod.InputMethodManager
+        window.peekDecorView()?.let { v ->
+            imm?.hideSoftInputFromWindow(v.windowToken, 0)
+        }
         setFullscreen()
+        applyCustomHomeBackground()
 
         checkSetupFlow()
 
@@ -855,6 +869,109 @@ class MainActivity : BaseActivity() {
             AppLog.i("MainActivity: Active session detected, bringing projection to front")
             bringProjectionToFront()
         }
+
+        // Coming back from a failed attempt lands here, so this is where the reason gets said.
+        updateConnectionIssueBanner()
+    }
+
+    /**
+     * Show why the last connection attempt failed, if anything is still wrong.
+     *
+     * Reads four stored stamps and nothing else - no sockets, no binder - so it is safe to run on
+     * every resume. The conditions themselves are detected far from here, on the connection path,
+     * and merely recorded; see [ConnectionIssues].
+     *
+     * Deliberately not driven by CommManager.connectionState. Its Error value is never delivered
+     * to a collector - the flow is conflated and startHandshake() overwrites Error with
+     * Disconnected before any collector resumes - so a banner hung off it would never appear.
+     */
+    /** The condition the banner is currently reporting, so the log line is not repeated. */
+    private var loggedBannerIssue: ConnectionIssue? = null
+
+    private fun updateConnectionIssueBanner() {
+        val banner = findViewById<View>(R.id.connection_issue_banner) ?: return
+        val text = findViewById<android.widget.TextView>(R.id.connection_issue_text)
+        val dismiss = findViewById<View>(R.id.connection_issue_dismiss)
+
+        val settings = Settings(this)
+        val issue = try {
+            ConnectionIssueBannerPolicy.bannerFor(
+                standing = ConnectionIssues.standing(this),
+                dismissedAtEpochMs = settings.connectionIssueDismissedAtEpochMs,
+                sessionConnected = App.provide(this).commManager.isConnected,
+                onboardingComplete =
+                    settings.onboardingVersion >= OnboardingActivity.CURRENT_ONBOARDING_VERSION,
+                relevant = ConnectionIssueBannerPolicy.relevantNow(
+                    mode = settings.wifiConnectionMode.id,
+                    transport = settings.nativeApStrategy
+                ),
+                remedyApplied = ConnectionIssueBannerPolicy.remedyApplied(
+                    hotspotSsid = settings.hotspotSsid,
+                    hotspotPassword = settings.hotspotPassword,
+                    staticBssid = settings.staticBSSID
+                )
+            )
+        } catch (e: Exception) {
+            AppLog.w("MainActivity: could not read the connection issue record: ${e.message}")
+            null
+        }
+
+        if (issue == null) {
+            banner.visibility = View.GONE
+            loggedBannerIssue = null
+            return
+        }
+
+        text?.setText(
+            when (issue) {
+                ConnectionIssue.BLUETOOTH_SENT_NO_DATA -> R.string.connection_issue_banner_bt_silent
+                ConnectionIssue.BSSID_UNAVAILABLE -> R.string.connection_issue_banner_bssid
+                ConnectionIssue.HOTSPOT_CONFIG_UNREADABLE -> R.string.connection_issue_banner_hotspot_config
+                ConnectionIssue.HOTSPOT_NOT_RUNNING -> R.string.connection_issue_banner_hotspot_off
+            }
+        )
+        banner.setOnClickListener { openRemedyFor(issue) }
+        dismiss?.setOnClickListener {
+            // Per occurrence, not permanent: the stamp is compared against the next raise, so the
+            // banner comes back on its own the next time the same thing happens.
+            Settings(this).connectionIssueDismissedAtEpochMs = System.currentTimeMillis()
+            banner.visibility = View.GONE
+        }
+        banner.visibility = View.VISIBLE
+        // Once per condition rather than once per resume: this screen is resumed constantly and a
+        // line repeated fifty times in a reporter's log buries the one that explains the failure.
+        if (loggedBannerIssue != issue) {
+            loggedBannerIssue = issue
+            AppLog.i("MainActivity: showing the connection issue banner for $issue")
+        }
+    }
+
+    /**
+     * Open Settings on the row that fixes [issue].
+     *
+     * Seeds the search box rather than using EXTRA_DESTINATION, which targets a whole screen: all
+     * three remedies are rows inside the settings list, and search is the only thing that reaches
+     * them regardless of the Basic/Advanced tier. Static BSSID is Advanced-only, so a Basic-mode
+     * user sent to Settings without this would not find the row the banner just named.
+     *
+     * The hotspot query is a phrase carried in both override rows' search keywords rather than
+     * either row's title, because that condition needs *both* of them: with a manual name set the
+     * device's own configuration is never read, so a blank password is sent as an open network
+     * instead of falling back. Seeding the name alone landed the user on one row, with nothing on
+     * screen saying the other was also required.
+     */
+    private fun openRemedyFor(issue: ConnectionIssue) {
+        val query = when (issue) {
+            ConnectionIssue.BLUETOOTH_SENT_NO_DATA -> getString(R.string.wireless_mode)
+            ConnectionIssue.BSSID_UNAVAILABLE -> getString(R.string.static_bssid_title)
+            ConnectionIssue.HOTSPOT_CONFIG_UNREADABLE ->
+                getString(R.string.connection_issue_remedy_hotspot_query)
+            ConnectionIssue.HOTSPOT_NOT_RUNNING -> getString(R.string.auto_enable_hotspot)
+        }
+        startActivity(
+            Intent(this, SettingsActivity::class.java)
+                .putExtra(SettingsActivity.EXTRA_SEARCH_QUERY, query)
+        )
     }
 
     /**
@@ -905,13 +1022,13 @@ class MainActivity : BaseActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         AppLog.i("dispatchKeyEvent: keyCode=%d, action=%d", event.keyCode, event.action)
-        
+
         // Always give the KeymapFragment (if active) a chance to see the key
         val handled = keyListener?.onKeyEvent(event) ?: false
-        
+
         // If the key was handled by our listener (e.g. in KeymapFragment), stop here
         if (handled) return true
-        
+
         // Otherwise continue with standard handling
         return super.dispatchKeyEvent(event)
     }
@@ -922,6 +1039,9 @@ class MainActivity : BaseActivity() {
             unregisterReceiver(finishReceiver)
             isFinishReceiverRegistered = false
         }
+        // Registered in stopAutoConnectVideo(), so without this it outlives the activity that owns
+        // it: every destroyed instance leaves a receiver behind that answers the next recreate
+        // request by calling recreate() on an activity that is already gone.
         if (isRecreateReceiverRegistered) {
             unregisterReceiver(recreateReceiver)
             isRecreateReceiverRegistered = false
@@ -930,6 +1050,15 @@ class MainActivity : BaseActivity() {
             AppLog.i("MainActivity finishing, resetting auto-start flag.")
             HomeFragment.resetAutoStart()
         }
+    }
+
+    fun applyCustomHomeBackground() {
+        findViewById<ImageView>(R.id.custom_home_background)?.let {
+            try { Glide.with(this).clear(it) } catch (_: Exception) {}
+            it.setImageDrawable(null)
+            it.visibility = View.GONE
+        }
+        applyWindowBackground()
     }
 
     companion object {

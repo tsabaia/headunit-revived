@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Context.UI_MODE_SERVICE
 import android.content.Intent
 import android.media.AudioManager
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Process
@@ -18,21 +19,28 @@ import com.andrerinas.openheadunit.aap.protocol.messages.Messages
 import com.andrerinas.openheadunit.aap.protocol.messages.ScrollWheelEvent
 import com.andrerinas.openheadunit.aap.protocol.messages.SensorEvent
 import com.andrerinas.openheadunit.aap.protocol.messages.VideoFocusEvent
+import com.andrerinas.openheadunit.decoder.audio.MicChunkAccumulator
+import com.andrerinas.openheadunit.decoder.audio.MicrophonePolicy
+import com.andrerinas.openheadunit.decoder.video.FocusCycleLever
+import com.andrerinas.openheadunit.decoder.video.KeyframeCycleEscalationPolicy
+import com.andrerinas.openheadunit.decoder.video.WarmRelaunchKeyframePolicy
+import com.andrerinas.openheadunit.input.KeyCode
+import com.andrerinas.openheadunit.utils.AuditReportPolicy
 import com.andrerinas.openheadunit.utils.LegacyOptimizer
-import com.andrerinas.openheadunit.connection.AccessoryConnection
-import com.andrerinas.openheadunit.connection.SocketAccessoryConnection
+import com.andrerinas.openheadunit.connection.projection.ProjectionConnection
+import com.andrerinas.openheadunit.connection.projection.SocketProjectionConnection
 import com.andrerinas.openheadunit.contract.ProjectionActivityRequest
-import com.andrerinas.openheadunit.decoder.AudioDecoder
-import com.andrerinas.openheadunit.decoder.MicRecorder
-import com.andrerinas.openheadunit.decoder.VideoDecoder
+import com.andrerinas.openheadunit.decoder.audio.AudioDecoder
+import com.andrerinas.openheadunit.decoder.audio.MicRecorder
+import com.andrerinas.openheadunit.decoder.video.VideoDecoder
 import com.andrerinas.openheadunit.main.BackgroundNotification
 import com.andrerinas.openheadunit.ssl.SingleKeyKeyManager
 import com.andrerinas.openheadunit.utils.AppLog
 import com.andrerinas.openheadunit.utils.Settings
-import com.andrerinas.openheadunit.aap.AapService
 import com.andrerinas.openheadunit.aap.protocol.proto.Control
+import com.andrerinas.openheadunit.aap.protocol.proto.Media
 import com.andrerinas.openheadunit.aap.protocol.proto.MediaPlayback
-import javax.net.ssl.SSLEngineResult
+import com.andrerinas.openheadunit.utils.Utils
 
 /**
  * Core AAP message pump.
@@ -75,7 +83,7 @@ class AapTransport(
     internal val aapVideo: AapVideo
     private var sendThread: HandlerThread? = null
     private var pollThread: HandlerThread? = null
-    private val micRecorder: MicRecorder = MicRecorder(settings.micSampleRate, context)
+    private val micRecorder: MicRecorder = MicRecorder(context)
     private val sessionIds = SparseIntArray(4)
     private val startedSensors = HashSet<Int>(4)
     private val droppedSensorEvents = HashMap<Int, Int>(4)
@@ -83,12 +91,12 @@ class AapTransport(
     private val keyCodes = mutableMapOf<Int, Int>()
     private val modeManager: UiModeManager =
         context.getSystemService(UI_MODE_SERVICE) as UiModeManager
-    private var connection: AccessoryConnection? = null
+    private var connection: ProjectionConnection? = null
     private var aapRead: AapRead? = null
     var isQuittingAllowed: Boolean = false
 
     val isWireless: Boolean
-        get() = connection is com.andrerinas.openheadunit.connection.SocketAccessoryConnection
+        get() = connection is SocketProjectionConnection
     var ignoreNextStopRequest: Boolean = false
     /** Why the last [startHandshake] failed, for callers that report it. */
     enum class HandshakeFailure {
@@ -139,10 +147,18 @@ class AapTransport(
     }
     private var sendHandler: Handler? = null
     private val sendHandlerCallback = Handler.Callback {
+        // Timed because the media channels are flow-controlled: acks that stay in here stall video
+        // and audio together and leave control traffic alone, which is indistinguishable from the
+        // phone going quiet unless one end or the other is actually measured. This thread serves one
+        // socket, so the write's own duration is the time the uplink refused to drain.
+        val startedMs = SystemClock.elapsedRealtime()
         this.sendEncryptedMessage(
             data = it.obj as ByteArray,
             length = it.arg2
         )
+        val finishedMs = SystemClock.elapsedRealtime()
+        uplinkStallMonitor.onWrite(finishedMs - startedMs, finishedMs)
+            ?.let { report -> AppLog.i("AapTransport: %s", report) }
         return@Callback true
     }
 
@@ -170,19 +186,116 @@ class AapTransport(
      */
     private val linkGapMonitor = LinkGapMonitor()
 
-    /** Called for every decrypted inbound message, from [AapMessageHandlerType.handle]. */
-    internal fun noteMessageReceived() {
+    /**
+     * The same measurement again, per media channel.
+     *
+     * The link series above is deaf to the fault these were added for: the phone pings about once a
+     * second on CONTROL for the life of the session, so a session whose picture and sound are both
+     * gone still scores a healthy link. Measured across five captures of that fault, the link series
+     * printed twice and never named an outage longer than 1.8 s while the picture was dead for six
+     * seconds out of every ten. Whether video and audio went quiet *together* is the fact that
+     * separates a dead radio from a stalled media path, and it takes three series to see it.
+     */
+    private val videoGapMonitor = LinkGapMonitor(
+        LinkGapMonitor.SUBJECT_VIDEO,
+        LinkGapMonitor.MIN_GAPS_MEDIA,
+        LinkGapMonitor.MAX_DEAD_PERCENT_MEDIA
+    )
+    private val audioGapMonitor = LinkGapMonitor(
+        LinkGapMonitor.SUBJECT_AUDIO,
+        LinkGapMonitor.MIN_GAPS_MEDIA,
+        LinkGapMonitor.MAX_DEAD_PERCENT_MEDIA
+    )
+
+    /**
+     * Which audio channels the phone currently has started.
+     *
+     * Android Auto stops the media sink for every assistant session and every pause, and the audio
+     * gap series counted those deliberate silences as outages - one window read 36% dead when all
+     * of it was an assistant session.
+     *
+     * Skipping the gap when the first sink comes back puts that silence outside the window while
+     * keeping what the window has already measured. A gate on the feed would instead have hidden
+     * any stream that arrives without a start request; a reset would have restarted the 30 s window
+     * on every cycle. The set keeps one channel closing from discarding another's window.
+     */
+    private val startedAudioChannels = HashSet<Int>()
+
+    /** Whether our own writes are draining. See [UplinkStallMonitor]. */
+    private val uplinkStallMonitor = UplinkStallMonitor()
+
+    /**
+     * How much actually arrives, which the three gap series above cannot say.
+     *
+     * A picture that sags without going quiet leaves every gap monitor silent, and a gap that is
+     * named still does not say whether the link was full or the phone was holding back. See
+     * [InboundRateMonitor].
+     */
+    private val inboundRateMonitor = InboundRateMonitor()
+
+    /** What the microphone session sent, so a silent assistant has something to read. */
+    private val micUplinkMonitor = MicUplinkMonitor()
+
+    /** Whole 2048-frame messages, whatever size the device's reads happen to be. */
+    private val micChunks = MicChunkAccumulator()
+
+    /**
+     * Called for every decrypted inbound message, from [AapMessageHandlerType.handle].
+     *
+     * [bytes] is the message payload. It is passed rather than derived here because this is a
+     * funnel and the message is not: everything upstream already knows the size.
+     */
+    internal fun noteMessageReceived(channel: Int, bytes: Int) {
         val now = SystemClock.elapsedRealtime()
         lastMessageReceivedMs = now
         linkGapMonitor.onMessage(now)?.let { AppLog.i("AapTransport: %s", it) }
+        inboundRateMonitor.onMessage(channel, bytes, now)?.let { AppLog.i("AapTransport: %s", it) }
+        when {
+            channel == Channel.ID_VID ->
+                videoGapMonitor.onMessage(now)?.let { AppLog.i("AapTransport: %s", it) }
+            Channel.isAudio(channel) ->
+                audioGapMonitor.onMessage(now)?.let { AppLog.i("AapTransport: %s", it) }
+        }
+    }
+
+    /**
+     * The phone started an audio sink. Called from [AapControlMedia.mediaStartRequest].
+     *
+     * The lock guards the set. The monitor itself needs none: this, [noteAudioSinkStopped] and
+     * [noteMessageReceived] all reach here from the transport's poll thread.
+     */
+    internal fun noteAudioSinkStarted(channel: Int) {
+        if (!Channel.isAudio(channel)) return
+        val firstSink = synchronized(startedAudioChannels) {
+            val wasEmpty = startedAudioChannels.isEmpty()
+            startedAudioChannels.add(channel)
+            wasEmpty
+        }
+        if (firstSink) audioGapMonitor.skipExpectedGap(SystemClock.elapsedRealtime())
+    }
+
+    /** The phone stopped an audio sink. Called from [AapControlMedia.mediaSinkStopRequest]. */
+    internal fun noteAudioSinkStopped(channel: Int) {
+        if (!Channel.isAudio(channel)) return
+        synchronized(startedAudioChannels) { startedAudioChannels.remove(channel) }
     }
 
     // Escalation state for KeyframeCycleEscalationPolicy - see triggerFocusCycleRecovery().
-    // unrepairedSinceMs is when the picture was last known good: set by a shed reference frame,
-    // cleared when a keyframe reaches the codec. Zero means nothing is broken.
+    // unrepairedSinceMs is when the picture was last known good: set by a shed reference frame, a
+    // rebuilt or starved codec, or a corrupt access unit off the wire, and cleared when a keyframe
+    // reaches the codec. Zero means nothing is broken.
     private var unrepairedSinceMs = 0L
     private var focusCyclesUsedThisSession = 0
     private var lastFocusCycleMs = 0L
+
+    /**
+     * Lifetime spends and the budget's last movement, for
+     * [KeyframeCycleEscalationPolicy.cyclesToRefund]. The spend counter is what the per-drive
+     * ceiling reads and refunds never touch it; the stamp moves on every spend and every refund,
+     * so refunds accrue one per quiet window rather than all against the first spend.
+     */
+    private var focusCyclesSpentThisSession = 0
+    private var lastBudgetChangeMs = 0L
 
     /**
      * When an access unit last arrived broken on the wire, as opposed to when the decoder last had
@@ -252,26 +365,70 @@ class AapTransport(
      * release can, and has only ever been tested against one phone. It stays the first response.
      *
      * @param escalatable whether this caller's stream is live enough to earn a focus release if the
-     *   nudge goes unanswered. True for the dropped-frame path, which is gated on the decoder having
-     *   rendered, and for both decoder paths - a rebuilt or keyframe-starved codec is the case where
-     *   the picture is most certainly gone and least able to come back on its own. That last pair
-     *   used to pass false, on the grounds that a rebuild belongs to [WarmRelaunchKeyframePolicy]'s
-     *   window and two deciders must not reach for the same lever. The lever now has one owner
-     *   ([com.andrerinas.openheadunit.connection.CommManager.releaseVideoFocusForKeyframe]), so the
-     *   overlap is refused rather than argued about, and the ordering still favours the surface path:
-     *   it escalates at 850ms against this one's 2000ms.
-     *   [AapVideo]'s corruption path stays false only because it has no rendered-frame signal to
-     *   gate on.
+     *   nudge goes unanswered. True for the dropped-frame path, for both decoder paths (a rebuilt
+     *   or keyframe-starved codec is the picture most certainly gone and least able to come back),
+     *   and for [AapVideo]'s corruption path, all behind the same
+     *   [VideoDecoder.hasRenderedThisSession] gate. The corruption path used to pass a hard false,
+     *   which left a wire truncation with only the inert nudge and a picture that stayed broken
+     *   for tens of seconds until the phone's own keyframe, against the escalation's few. Lever
+     *   overlap with [WarmRelaunchKeyframePolicy] is handled by the lever's single owner
+     *   ([com.andrerinas.openheadunit.connection.CommManager.releaseVideoFocusForKeyframe]), and
+     *   the ordering still favours the surface path: 850ms against this one's 2000ms.
+     *
+     * @param wireCorruption whether the caller is reporting an access unit that arrived broken *on
+     *   the wire*, which is what [KeyframeCycleEscalationPolicy]'s quiet gate reads. Its own
+     *   parameter rather than `!escalatable`: those were the same bit inverted only because
+     *   [AapVideo] was the sole non-escalatable caller, so the stamp could not survive that path
+     *   becoming escalatable. Now the decoder paths report a consequence and say so, and the video
+     *   path reports a cause and says so.
      */
     @Synchronized
-    private fun triggerFocusCycleRecovery(escalatable: Boolean) {
+    private fun triggerFocusCycleRecovery(escalatable: Boolean, wireCorruption: Boolean) {
         AppLog.w("AapTransport: Requesting recovery keyframe (unsolicited focus gain).")
         send(VideoFocusEvent(gain = true, unsolicited = true))
 
-        // Stamped before the returns below, and deliberately on the path that returns early: a
-        // stream that is still losing frames is exactly the case where the clock is already running,
-        // and that is the case the stamp exists to let the escalation see.
-        if (!escalatable) lastWireCorruptionMs = SystemClock.elapsedRealtime()
+        // Settled quiet earns spent cycles back, judged before this fault stamps the corruption
+        // clock - the stretch being judged is the one this fault just ended. Granted here, on the
+        // fault that needs it, rather than on a timer: escalateIfStillUnrepaired() only runs while
+        // the clock is armed, and a repaired picture is exactly when a refund becomes possible.
+        val refundNow = SystemClock.elapsedRealtime()
+        val refund = KeyframeCycleEscalationPolicy.cyclesToRefund(
+            refundNow,
+            focusCyclesUsedThisSession,
+            focusCyclesSpentThisSession,
+            lastBudgetChangeMs,
+            lastWireCorruptionMs,
+            unrepairedSinceMs != 0L,
+        )
+        if (refund > 0) {
+            focusCyclesUsedThisSession -= refund
+            lastBudgetChangeMs = refundNow
+            AppLog.w(
+                "AapTransport: quiet stream earned back $refund focus cycle(s) " +
+                    "($focusCyclesUsedThisSession/${KeyframeCycleEscalationPolicy.MAX_CYCLES_PER_SESSION} " +
+                    "used, $focusCyclesSpentThisSession/${KeyframeCycleEscalationPolicy.MAX_CYCLES_PER_DRIVE} " +
+                    "spent this drive)"
+            )
+            // A refund granted while the clock is armed lands in a session whose check chain has
+            // ended: escalateIfStillUnrepaired() stops re-arming once the budget is spent, and
+            // the armed clock makes this call return before arming a new one. Without its own
+            // check the refunded cycle is unspendable until a keyframe happens to arrive - the
+            // very wait it exists to cut short.
+            if (unrepairedSinceMs != 0L) {
+                sendHandler?.let { handler ->
+                    handler.removeCallbacks(unrepairedCheckRunnable)
+                    handler.postDelayed(
+                        unrepairedCheckRunnable,
+                        KeyframeCycleEscalationPolicy.ESCALATE_AFTER_UNREPAIRED_MS
+                    )
+                }
+            }
+        }
+
+        // Stamped before the returns below, and deliberately also when this call goes on to arm
+        // nothing: a stream that is still losing frames is exactly the case where the clock is
+        // already running, and that is the case the stamp exists to let the escalation see.
+        if (wireCorruption) lastWireCorruptionMs = SystemClock.elapsedRealtime()
 
         if (!escalatable || unrepairedSinceMs != 0L) return
         // Stamped only once the check is actually armed. Setting it without a handler to run the
@@ -353,7 +510,9 @@ class AapTransport(
                     return
                 }
                 focusCyclesUsedThisSession++
+                focusCyclesSpentThisSession++
                 lastFocusCycleMs = now
+                lastBudgetChangeMs = now
                 AppLog.w(
                     "AapTransport: picture unrepaired for ${now - since}ms - cycling video focus " +
                         "($focusCyclesUsedThisSession/${KeyframeCycleEscalationPolicy.MAX_CYCLES_PER_SESSION})"
@@ -406,10 +565,24 @@ class AapTransport(
     }
 
     init {
-        micRecorder.listener = this
-        aapAudio = AapAudio(audioDecoder, audioManager, settings, context)
+        // Nothing is wired when the microphone is the phone's, so AudioRecord is never constructed
+        // and a Bluetooth intercom keeps the physical microphone.
+        if (MicrophonePolicy.shouldCapture(settings.useHeadUnitMicrophone, micRecorder.isAvailable)) {
+            micRecorder.listener = this
+        } else {
+            AppLog.i("AapTransport: not taking the microphone (setting " +
+                "useHeadUnitMicrophone=${settings.useHeadUnitMicrophone}, " +
+                "available=${micRecorder.isAvailable})")
+        }
+        aapAudio = AapAudio(audioDecoder, audioManager, settings)
+        // A corrupt access unit is the one fault the phone cannot heal for us inside a GOP, and
+        // hasRenderedThisSession is the gate that keeps this clear of the warm-up window
+        // [WarmRelaunchKeyframePolicy] owns - the same gate VideoDecoder.notifyFrameDropped uses.
         aapVideo = AapVideo(videoDecoder, settings) {
-            triggerFocusCycleRecovery(escalatable = false)
+            triggerFocusCycleRecovery(
+                escalatable = videoDecoder.hasRenderedThisSession,
+                wireCorruption = true,
+            )
         }
 
         // A rebuilt codec resumes on a P-frame and can render nothing until an IDR arrives, which
@@ -418,16 +591,16 @@ class AapTransport(
         // lever that can repair it was switched off: the old wiring abandoned the escalation clock
         // and armed nothing, so a decoder restarting every ten seconds could never reach a cycle.
         videoDecoder.onDecoderError = { _ ->
-            triggerFocusCycleRecovery(escalatable = true)
+            triggerFocusCycleRecovery(escalatable = true, wireCorruption = false)
         }
 
         // Same ask, from a decoder that is deliberately *not* rebuilding while it waits.
         videoDecoder.onKeyframeStarved = {
-            triggerFocusCycleRecovery(escalatable = true)
+            triggerFocusCycleRecovery(escalatable = true, wireCorruption = false)
         }
 
         videoDecoder.onFrameDropped = {
-            triggerFocusCycleRecovery(escalatable = true)
+            triggerFocusCycleRecovery(escalatable = true, wireCorruption = false)
         }
 
         videoDecoder.onKeyframeObserved = {
@@ -484,6 +657,7 @@ class AapTransport(
         cb.invoke(clean)
         micRecorder.stop()
         micRecorder.listener = null
+        onMicSessionEnded()
         sendHandler?.removeCallbacks(focusCycleGainRunnable)
         sendHandler?.removeCallbacks(unrepairedCheckRunnable)
         pollThread?.quit()
@@ -523,7 +697,7 @@ class AapTransport(
      * Must be followed by [startReading] (called after the projection surface is ready)
      * to actually start the message loop.
      */
-    internal fun startHandshake(connection: AccessoryConnection): Boolean {
+    internal fun startHandshake(connection: ProjectionConnection): Boolean {
         AppLog.i("Start Aap transport handshake for $connection")
         this.connection = connection
         wasUserExit = false
@@ -531,6 +705,13 @@ class AapTransport(
         // previous phone would read as a live link for the first seconds of this one.
         lastMessageReceivedMs = 0L
         linkGapMonitor.reset()
+        videoGapMonitor.reset()
+        audioGapMonitor.reset()
+        synchronized(startedAudioChannels) { startedAudioChannels.clear() }
+        uplinkStallMonitor.reset()
+        inboundRateMonitor.reset()
+        micUplinkMonitor.reset()
+        micChunks.reset()
 
         sendThread = HandlerThread("AapTransport:Handler::Send", Process.THREAD_PRIORITY_AUDIO)
         sendThread!!.start()
@@ -578,10 +759,10 @@ class AapTransport(
         pollHandler?.sendEmptyMessage(MSG_POLL)
     }
 
-    private fun handshake(connection: AccessoryConnection): Boolean {
+    private fun handshake(connection: ProjectionConnection): Boolean {
         lastHandshakeFailure = HandshakeFailure.OTHER
         try {
-            val isUsb = connection !is SocketAccessoryConnection && !connection.isSingleMessage
+            val isUsb = connection !is SocketProjectionConnection && !connection.isSingleMessage
             // Increased delay for AA 16.4+ stability on USB - skip for Sockets
             if (isUsb) {
                 SystemClock.sleep(500)
@@ -672,10 +853,11 @@ class AapTransport(
                     lastHandshakeFailure = HandshakeFailure.PEER_SILENT
                     AppLog.e(
                         "Handshake: the peer accepted the connection and then sent nothing at all. " +
-                            "Our link is fine — every read timed out rather than failing. On the WiFi " +
-                            "head unit server path this means Android Auto's server on the phone is " +
-                            "still bound to an earlier connection; it does not recover on its own and " +
-                            "has to be stopped and started again in Android Auto's developer settings."
+                            "Our link is fine: every read timed out rather than failing. On the head " +
+                            "unit server path this is Android Auto's own side. It hands each accepted " +
+                            "connection to its car service and waits there with no timeout, so " +
+                            "restarting the server does not clear it. Force stop Android Auto on the " +
+                            "phone, and reboot it if that does not help."
                     )
                 }
                 return false
@@ -791,17 +973,51 @@ class AapTransport(
         sessionIds.put(channel, sessionId)
     }
 
-    override fun onMicDataAvailable(mic_buf: ByteArray, mic_audio_len: Int) {
-        if (mic_audio_len > 64) {  // If we read at least 64 bytes of audio data
-            val length = mic_audio_len + 12  // 4 header + 8 timestamp + PCM
-            val data = ByteArray(length)
-            data[0] = Channel.ID_MIC.toByte()
-            data[1] = 0x0b
-            // Timestamp at byte 4 so the full 8 bytes are inside the encrypted payload (HEADER_SIZE=4)
-            Utils.put_time(4, data, SystemClock.elapsedRealtime())
-            System.arraycopy(mic_buf, 0, data, 12, mic_audio_len)
-            send(AapMessage(Channel.ID_MIC, 0x0b.toByte(), -1, 2, length, data))
+    /**
+     * The session id a MediaStart left for [channel], or 0 if the phone never sent one.
+     *
+     * Zero is the honest answer on the microphone channel: every captured session opens it with a
+     * ChannelOpenRequest and a MicrophoneRequest and no Start in between.
+     */
+    internal fun getSessionId(channel: Int): Int = sessionIds.get(channel)
+
+    override fun onMicDataAvailable(mic_buf: ByteArray, mic_audio_len: Int, peak: Int) {
+        if (mic_audio_len <= 0) return
+        micChunks.offer(mic_buf, mic_audio_len, micTimestampUs(), peak, ::sendMicChunk)
+    }
+
+    /** One whole microphone message. The buffer is the chunker's and is reused, so copy as we build. */
+    private fun sendMicChunk(chunk: ByteArray, chunkLen: Int, timestampUs: Long, peak: Int) {
+        val data = ByteArray(MicUplinkFrame.size(chunkLen))
+        val length = MicUplinkFrame.build(timestampUs, chunk, 0, chunkLen, data)
+        send(AapMessage(Channel.ID_MIC, MicUplinkFrame.FLAGS,
+            Media.MsgType.MEDIA_MESSAGE_DATA_VALUE, MicUplinkFrame.TIMESTAMP_OFFSET, length, data))
+
+        if (micUplinkMonitor.onFrame(chunkLen, peak, SystemClock.elapsedRealtime())) {
+            AppLog.i("AapTransport: mic uplink started (channel MIC, type 0, timestamps in " +
+                "microseconds, ${chunkLen}B messages)")
         }
+    }
+
+    /**
+     * A monotonic microsecond clock, which is the unit every other AAP media producer stamps with.
+     *
+     * The nanosecond clock is API 17 and the github flavor's minSdk is 16, so the fallback
+     * quantises to a millisecond - two orders below a chunk, and still monotonic.
+     */
+    private fun micTimestampUs(): Long =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1)
+            SystemClock.elapsedRealtimeNanos() / 1000L
+        else SystemClock.elapsedRealtime() * 1000L
+
+    /** One acknowledgement from the phone on the microphone channel. Diagnostic only. */
+    internal fun onMicAck() = micUplinkMonitor.onAck()
+
+    /** The phone closed the microphone. Says what the session put on the wire, then re-arms. */
+    internal fun onMicSessionEnded() {
+        micUplinkMonitor.onDiscarded(micChunks.reset())
+        micUplinkMonitor.onSessionEnd(SystemClock.elapsedRealtime())
+            ?.let { AppLog.i("AapTransport: %s", it) }
     }
 
     companion object {

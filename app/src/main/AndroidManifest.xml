@@ -4,7 +4,7 @@
 
     <uses-sdk tools:overrideLibrary="
         com.google.android.gms.nearby, com.google.android.gms.base, com.google.android.gms.tasks, com.google.android.gms.common,
-        rikka.shizuku.provider, rikka.shizuku.api, rikka.shizuku.shared, rikka.shizuku.aidl, com.topjohnwu.superuser" />
+        rikka.shizuku.api, rikka.shizuku.shared, rikka.shizuku.aidl, com.topjohnwu.superuser" />
 
     <queries>
         <package android:name="com.google.android.projection.gearhead" />
@@ -69,7 +69,24 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Declared so the microphone type can be claimed; it is only ever requested when
+         RECORD_AUDIO is actually granted, because claiming it without throws on Android 14+. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!--
+        Only requested up to API 32. From API 33 (Android 13) a granted READ_LOGS makes the app a
+        privileged logd reader, which routes every `logcat` spawn through LogcatManagerService: the
+        system log-access consent dialog when the app is foreground, a silent downgrade to own-UID
+        logs when it is a background service. Nothing (pm grant, a property, a setting) suppresses
+        that. Without the permission the app is an ordinary reader and logd serves its own UID's
+        lines - Java and native - immediately and with no dialog, which is what LogExporter needs.
+        Pre-13 there is no LogcatManagerService, so there the permission still buys system-wide
+        logs for free.
+    -->
+    <uses-permission
+        android:name="android.permission.READ_LOGS"
+        android:maxSdkVersion="32"
+        tools:ignore="ProtectedPermissions" />
 
     <application
         android:name=".App"
@@ -110,6 +127,7 @@
         <activity
             android:name=".main.MainActivity"
             android:configChanges="keyboardHidden|uiMode"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan"
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/SplashTheme">
@@ -199,7 +217,7 @@
         <service
             android:name=".aap.AapService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice|mediaPlayback"
+            android:foregroundServiceType="connectedDevice|mediaPlayback|microphone"
             android:stopWithTask="false">
             <!-- MediaButtonReceiver looks for a Service with this intent-filter -->
             <intent-filter>
@@ -237,7 +255,7 @@
         <!-- Comprehensive receiver for steering wheel and hardware buttons,
              covering both standard Android events and proprietary Chinese headunit broadcasts. -->
         <receiver
-            android:name=".connection.CarKeyReceiver"
+            android:name=".connection.carkey.CarKeyBroadcastReceiver"
             android:exported="true">
             <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
@@ -340,6 +358,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".connection.self.PermissionTrampolineActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -349,13 +372,5 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/provider_paths" />
         </provider>
-
-        <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:enabled="true"
-            android:exported="true"
-            android:multiprocess="false"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>
 </manifest>

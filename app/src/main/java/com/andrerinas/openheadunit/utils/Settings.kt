@@ -6,14 +6,19 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.location.Location
+import android.media.AudioManager
 import android.os.Build
-import com.andrerinas.openheadunit.aap.MediaKeyRoutingPolicy
-import com.andrerinas.openheadunit.aap.VideoFaultInjector
-import com.andrerinas.openheadunit.decoder.DeviceMemoryProfile
-import com.andrerinas.openheadunit.aap.PlaybackFocusPolicy
+import com.andrerinas.openheadunit.input.MediaKeyRoutingPolicy
+import com.andrerinas.openheadunit.decoder.video.VideoFaultInjector
+import com.andrerinas.openheadunit.decoder.video.DeviceMemoryProfile
+import com.andrerinas.openheadunit.decoder.audio.PlaybackFocusPolicy
+import com.andrerinas.openheadunit.aap.VehicleTypePolicy
 import com.andrerinas.openheadunit.aap.protocol.proto.Control
 import com.andrerinas.openheadunit.app.UsbAttachedActivity
-import com.andrerinas.openheadunit.connection.UsbDeviceCompat
+import com.andrerinas.openheadunit.connection.usb.UsbDeviceCompat
+import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
+import com.andrerinas.openheadunit.connection.wifi.modes.nativeaa.NativeStrategy
+import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
 
 class Settings(private val context: Context) {
 
@@ -33,14 +38,18 @@ class Settings(private val context: Context) {
         return allowDevices.contains(deviceCompat.uniqueName)
     }
 
+    var isAdvancedSettingsActive: Boolean
+        get() = prefs.getBoolean("advanced-settings-active", false)
+        set(value) { prefs.edit().putBoolean("advanced-settings-active", value).apply() }
+
     var allowedDevices: Set<String>
-        get() = prefs.getStringSet("allow-devices", HashSet<String>())!!
-        set(devices) {
+        @Synchronized get() = prefs.getStringSet("allow-devices", null)?.toSet() ?: emptySet()
+        @Synchronized set(devices) {
             prefs.edit().putStringSet("allow-devices", devices).apply()
         }
 
     var networkAddresses: Set<String>
-        get() = prefs.getStringSet("network-addresses", HashSet<String>())!!
+        get() = prefs.getStringSet("network-addresses", null)?.toSet() ?: emptySet()
         set(addrs) {
             prefs.edit().putStringSet("network-addresses", addrs).apply()
         }
@@ -99,8 +108,20 @@ class Settings(private val context: Context) {
         get() = prefs.getInt("ui-scale-settings-percent", 100)
         set(value) { prefs.edit().putInt("ui-scale-settings-percent", value).apply() }
 
+    /**
+     * The rate the microphone hardware is opened at when 16 kHz cannot be opened. Not what the phone
+     * receives: that is always 16 kHz mono, because Android Auto validates the announced config and
+     * rejects anything outside {16000, 48000} Hz.
+     *
+     * The list used to run 8000 to 48000 and the announcement was hardcoded at 16000, so every other
+     * choice sent the phone PCM at a rate it had never been told about. A stored value from then is
+     * migrated here rather than in a one-shot, since only the two remaining rates convert cleanly.
+     */
     var micSampleRate: Int
-        get() = prefs.getInt("mic-sample-rate", 16000)
+        get() {
+            val stored = prefs.getInt("mic-sample-rate", MicSampleRates.first())
+            return if (stored in MicSampleRates) stored else MicSampleRates.first()
+        }
         set(sampleRate) {
             prefs.edit().putInt("mic-sample-rate", sampleRate).apply()
         }
@@ -122,6 +143,19 @@ class Settings(private val context: Context) {
         get() = prefs.getBoolean(KEY_SYNC_MEDIA_SESSION_AA_METADATA, false)
         set(value) {
             prefs.edit().putBoolean(KEY_SYNC_MEDIA_SESSION_AA_METADATA, value).apply()
+        }
+
+    /**
+     * In Self Mode, put the projection back on top when a call covers it.
+     *
+     * Android Auto's own call UI is already on the projected surface, so the phone's call screen
+     * only hides it. Self Mode only: anywhere else the call screen is on the phone, not on the
+     * head unit.
+     */
+    var raiseProjectionDuringCall: Boolean
+        get() = prefs.getBoolean("raise-projection-during-call", true)
+        set(value) {
+            prefs.edit().putBoolean("raise-projection-during-call", value).apply()
         }
 
     var nightMode: NightMode
@@ -175,6 +209,16 @@ class Settings(private val context: Context) {
         DOWNLOADS
     }
 
+    /**
+     * Where captured logs come from. Read on every [com.andrerinas.openheadunit.utils.AppLog.init],
+     * including the one in `App.onCreate`, so this getter must not do any work.
+     *
+     * It used to resolve its default by spawning `logcat` to see whether the ROM allows it. That ran
+     * on the main thread at every process start, even when the preference below already answered the
+     * question, and on Android 13+ each spawn raises the system log-access consent dialog. A
+     * restricted ROM is now detected from the capture that actually runs, in [LogExporter]'s
+     * zero-byte branch.
+     */
     var logSource: LogSource
         get() = LogSource.entries.getOrElse(prefs.getInt(KEY_LOG_SOURCE, LogSource.LOGCAT.ordinal)) { LogSource.LOGCAT }
         set(value) { prefs.edit().putInt(KEY_LOG_SOURCE, value.ordinal).apply() }
@@ -245,6 +289,12 @@ class Settings(private val context: Context) {
         get() = prefs.getBoolean("rename_notice_shown_v2", false)
         set(value) {
             prefs.edit().putBoolean("rename_notice_shown_v2", value).apply()
+        }
+
+    var aa174NoticeShown: Boolean
+        get() = prefs.getBoolean("aa174_notice_shown", false)
+        set(value) {
+            prefs.edit().putBoolean("aa174_notice_shown", value).apply()
         }
 
     // Custom Insets (Screen Margins)
@@ -351,63 +401,116 @@ class Settings(private val context: Context) {
         set(value) { prefs.edit().putString("debug-force-memory-profile", value?.name).apply() }
 
     /**
-     * Puts the Native AA WiFi Direct group on 2.4 GHz instead of asking for 5 GHz.
+     * Which band to ask for when this app creates the Native AA WiFi Direct group.
+     * 0 = automatic, 1 = 5 GHz only, 2 = 2.4 GHz only.
      *
-     * Off by default, and it is a rig lever rather than a preference: 5 GHz is what a working
-     * session runs on and nothing here recommends moving off it. What it exists for is that the
-     * link-outage reports come from 2.4 GHz head units and the rig could never be put on that band
-     * - the group is requested as 5 GHz and any group that lands on 2.4 GHz is torn down and
-     * remade. Both of those are turned off together by this one flag; see
-     * [com.andrerinas.openheadunit.aap.NativeGroupBandPolicy], which is where the coupling lives.
+     * The same question the hotspot route answers with [hotspotBand], and it is here because having
+     * it on one transport and not the other was the accident rather than the design. `0` is exactly
+     * what shipped before this setting existed: ask for 5 GHz, remake a group that lands on 2.4 GHz,
+     * and drop to the platform's own choice if 5 GHz will not form at all.
      *
-     * Applies to the next group, so it needs a reconnect rather than only a settings write.
+     * `1` stops that last step. A session on 2.4 GHz can connect, look entirely healthy and show
+     * nothing, which is harder to diagnose than a group that never forms, so this is for a unit
+     * whose fallback lands somewhere that shows no picture. `2` is for a radio that will not host a
+     * 5 GHz group owner, and it disarms the band-mismatch retry with it - see
+     * [com.andrerinas.openheadunit.connection.wifi.direct.NativeGroupBandPolicy], which is where that coupling lives.
+     *
+     * **Below API 29 none of this is a band request.** There is no `WifiP2pConfig.Builder` there, so
+     * the app asks for an *operating channel* through hidden reflection instead, walking 5 GHz then
+     * 2.4 GHz then no restriction at all - one rung per bring-up that forms no group. That ladder is
+     * why 5 GHz is now tried by default on those units: the request is a disallowed-frequency list,
+     * so a unit that cannot host a group owner on the band it names used to be left unable to form
+     * a group rather than left on the other band, and a wrong answer cost it the connection. With
+     * somewhere to fall back to it costs a round trip. See
+     * [com.andrerinas.openheadunit.aap.P2pOperatingChannelPolicy]. Pre-Q also cannot read a group's
+     * frequency back, so what the log records there is the request, never the result.
+     *
+     * Replaces the `debug-force-p2p-band-24` and `p2p-legacy-5ghz` flags, whose values migrate in
+     * the getter below. Applies to the next group, so it needs a reconnect rather than only a write.
      */
-    var debugForceP2pBand24: Boolean
-        get() = prefs.getBoolean("debug-force-p2p-band-24", false)
-        set(value) { prefs.edit().putBoolean("debug-force-p2p-band-24", value).apply() }
+    var wifiDirectBand: Int
+        get() {
+            if (prefs.contains("wifi-direct-band")) return prefs.getInt("wifi-direct-band", 0)
+            // One-time migration off the two booleans this replaces. 2.4 GHz wins because it was the
+            // deliberate override; the 5 GHz opt-in only ever meant "ask for it on pre-Q", which is
+            // now what position 1 says.
+            val migrated = when {
+                prefs.getBoolean("debug-force-p2p-band-24", false) -> 2
+                prefs.getBoolean("p2p-legacy-5ghz", false) -> 1
+                else -> 0
+            }
+            prefs.edit().putInt("wifi-direct-band", migrated).apply()
+            return migrated
+        }
+        set(value) = prefs.edit().putInt("wifi-direct-band", value).apply()
 
     /**
-     * On a device with no band API, asks the P2P stack for a 5 GHz operating channel.
-     *
-     * Below API 29 there is no `WifiP2pConfig.Builder`, so the group's band is the driver's choice
-     * and this app has never had a say in it - which is every pre-Android-10 head unit, including
-     * both units in the periodic-outage reports. The hidden `setWifiP2pChannels` is the one lever
-     * left; see [com.andrerinas.openheadunit.aap.P2pOperatingChannelPolicy].
-     *
-     * **Off by default, and it should stay off until a unit reports back.** The request is a
-     * disallowed-frequency list, so a unit whose P2P firmware cannot host a 5 GHz group owner is not
-     * left on 2.4 GHz - it is left unable to form a group at all. The bring-up clears the restriction
-     * and retries once when that happens, but an opt-in costs nothing and a wrong default costs
-     * every pre-Q unit its connection.
-     *
-     * Ignored from API 29 up, where the supported band request does this properly.
-     */
-    var p2pLegacyFiveGhz: Boolean
-        get() = prefs.getBoolean("p2p-legacy-5ghz", false)
-        set(value) { prefs.edit().putBoolean("p2p-legacy-5ghz", value).apply() }
-
-    /**
-     * Asks for UNII-3 (channel 149) instead of UNII-1 (channel 36) when [p2pLegacyFiveGhz] is on.
+     * Asks for UNII-3 (channel 149) instead of UNII-1 (channel 36) on the 5 GHz rung of the pre-Q
+     * operating-channel ladder.
      *
      * Both are non-DFS and channel 36 is what the reference implementations use, so this exists only
-     * for a regulatory domain that refuses the lower range.
+     * for a regulatory domain that refuses the lower range. Ignored when [wifiDirectBand] is 2.4 GHz
+     * only, which never reaches that rung, and from API 29 up, where the band request replaces the
+     * whole ladder.
      */
     var p2pLegacyFiveGhzUpperBand: Boolean
         get() = prefs.getBoolean("p2p-legacy-5ghz-upper", false)
         set(value) { prefs.edit().putBoolean("p2p-legacy-5ghz-upper", value).apply() }
 
     /**
+     * Keeps this app's dummy VPN up for the life of a Native AA session, not only offline Self Mode.
+     *
+     * Two reporters on different hardware describe the same periodic media outage going quiet while
+     * the dummy VPN happened to be active. **The mechanism is unproven.** The setting's own
+     * description tells the user it is so the chip stops looking for other networks, which is the
+     * working theory and the right thing to tell somebody deciding whether to try it, but nothing
+     * in this app has measured that and this comment must not be read as saying otherwise.
+     *
+     * Off by default. While it is up, every *other* app on the head unit loses IPv4: the tun routes
+     * 0.0.0.0/0 into a descriptor nobody reads. This app is excluded from it, so the projection
+     * link is unaffected.
+     *
+     * Inert on the Play Store flavor, which ships no VPN at all: [VpnControl.isVpnAvailable] is
+     * false there, so the toggle is never rendered and nothing acts on this value.
+     *
+     * Only acted on for a Native AA wireless session; see
+     * [com.andrerinas.openheadunit.utils.DummyVpnPolicy.shouldStartForSession], which explains why
+     * the mode has to be re-tested at the point of use rather than trusted from this flag.
+     */
+    var keepDummyVpnDuringSession: Boolean
+        get() = prefs.getBoolean("keep-dummy-vpn-during-session", false)
+        set(value) { prefs.edit().putBoolean("keep-dummy-vpn-during-session", value).apply() }
+
+    /**
      * Asks the decoder for low-latency mode, through whichever key its vendor understands.
      *
-     * Off by default, and it stays off until a log from a real device shows a component accepting the
-     * key - which is this project's standing rule about vendor MediaFormat keys, written after
-     * KEY_PRIORITY and KEY_OPERATING_RATE were both measured being rejected outright. The configure
-     * ladder is what makes turning it on cheap to try: a rejected key now costs one retry instead of
-     * the session. See [com.andrerinas.openheadunit.decoder.DecoderConfigLadder].
+     * Off by default, and it stays off until a log from a real device shows the key changing the
+     * decode latency on the throughput line - not merely being accepted, which a component can do
+     * while ignoring it. The configure ladder is what makes turning it on cheap to try: a rejected
+     * key costs one retry instead of the session. See
+     * [com.andrerinas.openheadunit.decoder.video.DecoderConfigLadder].
      */
     var debugVideoLowLatency: Boolean
         get() = prefs.getBoolean("debug-video-low-latency", false)
         set(value) { prefs.edit().putBoolean("debug-video-low-latency", value).apply() }
+
+    /**
+     * Holds the feed thread for this many milliseconds after every frame it hands the codec,
+     * simulating a decoder slower than the stream.
+     *
+     * Off at 0, and meant to stay off. The backpressure path only engages when a codec cannot
+     * drain the negotiated rate, which a healthy rig never produces - so without this there is
+     * no way to show the pacing works except to wait for a reporter's next drive. The hold sits
+     * after the feed rather than inside the codec's own wait, so the codec stays healthy and
+     * rendering while the queue fills: the same shape as a real decoder at its ceiling, which
+     * keeps decoding all through the event. A session with this on announces it loudly at
+     * feed-thread start, so a captured log can never be mistaken for a log of a real fault.
+     * Capped so a forgotten setting slows a session to a crawl rather than reading as a dead
+     * decoder.
+     */
+    var debugVideoFeedHoldMs: Int
+        get() = prefs.getInt("debug-video-feed-hold-ms", 0)
+        set(value) { prefs.edit().putInt("debug-video-feed-hold-ms", value.coerceIn(0, 250)).apply() }
 
     /** One in this many of the targeted messages is faulted. See [debugVideoFaultInjection]. */
     var debugVideoFaultRate: Int
@@ -461,6 +564,10 @@ class Settings(private val context: Context) {
         get() = prefs.getString("vehicle-id", "headlessunit-001")!!
         set(value) { prefs.edit().putString("vehicle-id", value).apply() }
 
+    var vehicleType: Int
+        get() = VehicleTypePolicy.sanitised(prefs.getInt("vehicle-type", VehicleTypePolicy.CAR))
+        set(value) { prefs.edit().putInt("vehicle-type", value).apply() }
+
     var headUnitMake: String
         get() = prefs.getString("head-unit-make", "Google")!!
         set(value) { prefs.edit().putString("head-unit-make", value).apply() }
@@ -469,24 +576,36 @@ class Settings(private val context: Context) {
         get() = prefs.getString("head-unit-model", "Desktop Head Unit")!!
         set(value) { prefs.edit().putString("head-unit-model", value).apply() }
 
+    var hideBatteryLevel: Boolean
+        get() = prefs.getBoolean("hide-battery-level", false)
+        set(value) { prefs.edit().putBoolean("hide-battery-level", value).apply() }
+
+    var hidePhoneSignal: Boolean
+        get() = prefs.getBoolean("hide-phone-signal", false)
+        set(value) { prefs.edit().putBoolean("hide-phone-signal", value).apply() }
+
+    var hideClock: Boolean
+        get() = prefs.getBoolean("hide-clock", false)
+        set(value) { prefs.edit().putBoolean("hide-clock", value).apply() }
+
     // 0 = Manual, 1 = Auto (Headunit Server), 2 = Helper (Wifi Launcher), 3 = Native AA
-    var wifiConnectionMode: Int
+    var wifiConnectionMode: WifiLauncherMode
         get() {
             // Migration: Check if old helper boolean exists
             if (prefs.contains("wifi-launcher-mode")) {
                 val old = prefs.getBoolean("wifi-launcher-mode", false)
                 val newMode = if (old) 2 else 1
                 prefs.edit().putInt("wifi-connection-mode", newMode).remove("wifi-launcher-mode").apply()
-                return newMode
+                return WifiLauncherMode.byIdOrDefault(newMode)
             }
             // Migration: Check if native-aa-wireless was true
             if (prefs.getBoolean("native-aa-wireless", false)) {
                 prefs.edit().putInt("wifi-connection-mode", 3).remove("native-aa-wireless").apply()
-                return 3
+                return WifiLauncherMode.NATIVE
             }
-            return prefs.getInt("wifi-connection-mode", 2) // Default 2 (Wireless Helper)
+            return WifiLauncherMode.byIdOrDefault(prefs.getInt("wifi-connection-mode", -1))
         }
-        set(value) { prefs.edit().putInt("wifi-connection-mode", value).apply() }
+        set(value) { prefs.edit().putInt("wifi-connection-mode", value.id).apply() }
 
     var videoCodec: String
         get() = prefs.getString("video-codec", "Auto")!!
@@ -562,6 +681,9 @@ class Settings(private val context: Context) {
     /** The external-GPS choice only applies when a phone is connected; false only for Self-only. */
     fun showsExternalGps(): Boolean = showsUsb() || showsWifi()
 
+    /** Whether Self Mode settings should be shown (empty selection shows everything). */
+    fun showsSelf(): Boolean = connectionModes.isEmpty() || ConnectionMode.SELF in connectionModes
+
     var autoConnectLastSession: Boolean
         get() = prefs.getBoolean("auto-connect-last-session", false)
         set(value) { prefs.edit().putBoolean("auto-connect-last-session", value).apply() }
@@ -594,6 +716,19 @@ class Settings(private val context: Context) {
         lastConnectionUsbDevice = ""
     }
 
+    /**
+     * Whether the head unit records at all. Off leaves the microphone to the phone.
+     *
+     * Off does not omit the microphone service: Android Auto's required-service check refuses a
+     * head unit that does not declare one. It declares it, declines every request, and sends
+     * nothing, which is what frees the physical microphone for a Bluetooth headset or intercom.
+     */
+    var useHeadUnitMicrophone: Boolean
+        get() = prefs.getBoolean("use-head-unit-microphone", true)
+        set(value) {
+            prefs.edit().putBoolean("use-head-unit-microphone", value).apply()
+        }
+
     var enableAudioSink: Boolean
         get() = prefs.getBoolean("enable-audio-sink", true)
         set(value) { prefs.edit().putBoolean("enable-audio-sink", value).apply() }
@@ -603,14 +738,22 @@ class Settings(private val context: Context) {
         set(value) { prefs.edit().putBoolean("static-audio-focus", value).apply() }
 
     // Whether AA playback takes system audio focus, so another local player (typically the car
-    // radio) pauses while it runs. AUTO skips it when a Bluetooth media link is up, because the
-    // A2DP sink answers our focus grab by pausing the phone that is feeding us. See
+    // radio) pauses while it runs. AUTO takes it until the phone is seen cutting its own audio in
+    // response, which is what happens when this head unit is its Bluetooth A2DP sink. See
     // PlaybackFocusPolicy for the whole story; ALWAYS and NEVER are the manual overrides.
     var playbackFocusMode: PlaybackFocusPolicy.Mode
         get() = PlaybackFocusPolicy.Mode.fromInt(
             prefs.getInt("playback-focus-mode", PlaybackFocusPolicy.Mode.AUTO.value)
         )
         set(value) { prefs.edit().putInt("playback-focus-mode", value.value).apply() }
+
+    // What AUTO learned: taking system audio focus stops the phone's own playback on this head
+    // unit, so stop asking for it. Remembered because the trial that finds it out costs the user a
+    // couple of interrupted tracks, and there is no reason to pay that at every connect. Re-picking
+    // the focus mode clears it, which is the way back from a false positive.
+    var playbackFocusSelfDefeating: Boolean
+        get() = prefs.getBoolean("playback-focus-self-defeating", false)
+        set(value) { prefs.edit().putBoolean("playback-focus-self-defeating", value).apply() }
 
     // Whether the physical media buttons reach Android Auto, or are left to the Bluetooth side that
     // may already act on the same press — two consumers of one button skip two tracks. See
@@ -625,6 +768,31 @@ class Settings(private val context: Context) {
     var separateAudioStreams: Boolean
         get() = prefs.getBoolean("separate-audio-streams", false)
         set(value) { prefs.edit().putBoolean("separate-audio-streams", value).apply() }
+
+    // Which system stream each Android Auto audio channel is played on, stored as the
+    // AudioManager.STREAM_* constant. Named after the AudioStreamType the channel is declared as
+    // in ServiceDiscoveryResponse - MEDIA on ID_AUD, SPEECH on ID_AU1, SYSTEM on ID_AU2 - because
+    // the Android stream a channel is pointed at is exactly what these choose, and naming them
+    // after the streams instead made the two impossible to talk about apart.
+    //
+    // The defaults reproduce the mapping that separate streams always used, so an install that
+    // never opens the screen behaves exactly as before; the pickers exist because head units route
+    // the streams differently (a unit whose amplifier only unmutes on STREAM_MUSIC needs the
+    // guidance channel moved off STREAM_VOICE_CALL to be heard at all).
+    //
+    // Only the media stream applies while separateAudioStreams is off: every channel then shares
+    // it, which is what "a single multimedia stream" means.
+    var mediaAudioStream: Int
+        get() = prefs.getInt("media-audio-stream", AudioManager.STREAM_MUSIC)
+        set(value) { prefs.edit().putInt("media-audio-stream", value).apply() }
+
+    var guidanceAudioStream: Int
+        get() = prefs.getInt("guidance-audio-stream", AudioManager.STREAM_VOICE_CALL)
+        set(value) { prefs.edit().putInt("guidance-audio-stream", value).apply() }
+
+    var systemAudioStream: Int
+        get() = prefs.getInt("system-audio-stream", AudioManager.STREAM_NOTIFICATION)
+        set(value) { prefs.edit().putInt("system-audio-stream", value).apply() }
 
     var micInputSource: Int
         get() = prefs.getInt("mic-input-source", 0) // Default: DEFAULT
@@ -678,6 +846,10 @@ class Settings(private val context: Context) {
         get() = prefs.getBoolean("auto-start-self-mode", false)
         set(value) { prefs.edit().putBoolean("auto-start-self-mode", value).apply() }
 
+    var autoConnectDelaySeconds: Int
+        get() = prefs.getInt("auto-connect-delay-seconds", 0)
+        set(value) { prefs.edit().putInt("auto-connect-delay-seconds", value).apply() }
+
     var autoStartOnUsb: Boolean
         get() = prefs.getBoolean("auto-start-on-usb", false)
         set(value) { prefs.edit().putBoolean("auto-start-on-usb", value).apply() }
@@ -701,6 +873,40 @@ class Settings(private val context: Context) {
     var listenForUsbDevices: Boolean
         get() = prefs.getBoolean("listen-for-usb-devices", true)
         set(value) { prefs.edit().putBoolean("listen-for-usb-devices", value).apply() }
+
+    var usbBlacklist: Set<String>
+        @Synchronized get() = prefs.getStringSet("usb-blacklist", null)?.toSet() ?: emptySet()
+        @Synchronized set(value) { prefs.edit().putStringSet("usb-blacklist", value).apply() }
+
+    fun formatUsbVidPidKey(vid: Int, pid: Int): String {
+        return String.format(java.util.Locale.US, "%04x:%04x", vid, pid).lowercase()
+    }
+
+    fun formatUsbVidPidDisplay(vid: Int, pid: Int): String {
+        return String.format(java.util.Locale.US, "VID: 0x%04X, PID: 0x%04X", vid, pid)
+    }
+
+    @Synchronized
+    fun isUsbDeviceBlacklisted(vid: Int, pid: Int): Boolean {
+        val key = formatUsbVidPidKey(vid, pid)
+        return usbBlacklist.contains(key)
+    }
+
+    @Synchronized
+    fun addUsbDeviceToBlacklist(vid: Int, pid: Int) {
+        val key = formatUsbVidPidKey(vid, pid)
+        val set = (prefs.getStringSet("usb-blacklist", null)?.toSet() ?: emptySet()).toMutableSet()
+        set.add(key)
+        prefs.edit().putStringSet("usb-blacklist", set).apply()
+    }
+
+    @Synchronized
+    fun removeUsbDeviceFromBlacklist(vid: Int, pid: Int) {
+        val key = formatUsbVidPidKey(vid, pid)
+        val set = (prefs.getStringSet("usb-blacklist", null)?.toSet() ?: emptySet()).toMutableSet()
+        set.remove(key)
+        prefs.edit().putStringSet("usb-blacklist", set).apply()
+    }
 
     var showToastMessages: Boolean
         get() = prefs.getBoolean("show-toast-messages", true)
@@ -766,15 +972,21 @@ class Settings(private val context: Context) {
         get() = prefs.getString("app-language", "")!!
         set(value) { prefs.edit().putString("app-language", value).apply() }
 
+    // Per-channel playback gain, as a percentage offset applied by AudioDecoder.setGain. Named
+    // after the channel each one drives - MEDIA on ID_AUD, guidance on ID_AU1, system sounds on
+    // ID_AU2 - which is not what the stored keys say: "assistant" and "navigation" were the old
+    // names for the last two, and ID_AU2 was never the navigation channel (spoken directions
+    // arrive on ID_AU1 with the assistant). The keys keep the old spelling because they are
+    // shipped data and renaming them would reset every existing user's offsets.
     var mediaVolumeOffset: Int
         get() = prefs.getInt("media-volume-offset", 0)
         set(value) { prefs.edit().putInt("media-volume-offset", value).apply() }
 
-    var assistantVolumeOffset: Int
+    var guidanceVolumeOffset: Int
         get() = prefs.getInt("assistant-volume-offset", 0)
         set(value) { prefs.edit().putInt("assistant-volume-offset", value).apply() }
 
-    var navigationVolumeOffset: Int
+    var systemVolumeOffset: Int
         get() = prefs.getInt("navigation-volume-offset", 0)
         set(value) { prefs.edit().putInt("navigation-volume-offset", value).apply() }
 
@@ -802,6 +1014,39 @@ class Settings(private val context: Context) {
     var loadingScreenScalePercent: Int
         get() = prefs.getInt("loading-screen-scale-percent", 100)
         set(value) { prefs.edit().putInt("loading-screen-scale-percent", value).apply() }
+
+    // Custom home screen background image
+    var homeBackgroundImagePath: String
+        get() = prefs.getString("home-background-image-path", "") ?: ""
+        set(value) { prefs.edit().putString("home-background-image-path", value).apply() }
+
+    // Custom button colors for Home screen (0 = default gradient)
+    var customSelfModeButtonColor: Int
+        get() = prefs.getInt("custom-self-mode-button-color", 0)
+        set(value) { prefs.edit().putInt("custom-self-mode-button-color", value).apply() }
+
+    var customUsbButtonColor: Int
+        get() = prefs.getInt("custom-usb-button-color", 0)
+        set(value) { prefs.edit().putInt("custom-usb-button-color", value).apply() }
+
+    var customWifiButtonColor: Int
+        get() = prefs.getInt("custom-wifi-button-color", 0)
+        set(value) { prefs.edit().putInt("custom-wifi-button-color", value).apply() }
+
+    var customSettingsButtonColor: Int
+        get() = prefs.getInt("custom-settings-button-color", 0)
+        set(value) { prefs.edit().putInt("custom-settings-button-color", value).apply() }
+
+    // Custom button scaling percentage for Home screen (default = 100%, valid range 60..120)
+    var homeButtonScalePercent: Int
+        get() {
+            val saved = prefs.getInt("home-button-scale-percent", 100)
+            return if (saved in 60..120) saved else 100
+        }
+        set(value) {
+            val valid = if (value in 60..120) value else 100
+            prefs.edit().putInt("home-button-scale-percent", valid).apply()
+        }
 
     @SuppressLint("ApplySharedPref")
     fun commit() {
@@ -986,10 +1231,10 @@ class Settings(private val context: Context) {
         const val CONNECTION_TYPE_USB = "usb"
         const val CONNECTION_TYPE_NEARBY = "nearby"
 
-        /** SharedPreferences key; also used by [AapService] for change listener. */
+        /** SharedPreferences key; also used by [com.andrerinas.openheadunit.aap.AapService] for change listener. */
         const val KEY_SYNC_MEDIA_SESSION_AA_METADATA = "sync-media-session-aa-metadata"
 
-        /** SharedPreferences key; also used by [AapService] for change listener. */
+        /** SharedPreferences key; also used by [com.andrerinas.openheadunit.aap.AapService] for change listener. */
         const val KEY_LOG_LEVEL = "log-level"
         const val KEY_LOG_SOURCE = "log-source"
         const val KEY_LOG_LOCATION = "log-location"
@@ -1293,7 +1538,11 @@ class Settings(private val context: Context) {
             }
         }
 
-        val MicSampleRates = listOf(8000, 16000, 24000, 32000, 44100, 48000) // Changed to List
+        /**
+         * The two rates Android Auto accepts. 48000 is the fallback because it is a whole multiple
+         * of 16000, so converting it needs no filter; 44100 and the rest were never usable.
+         */
+        val MicSampleRates = listOf(16000, 48000)
 
         fun getNextMicSampleRate(currentRate: Int): Int {
             val currentIndex = MicSampleRates.indexOf(currentRate)
@@ -1362,9 +1611,33 @@ class Settings(private val context: Context) {
         }
     }
 
+    enum class BackgroundNightMode(val value: Int) {
+        DIM(0),
+        PURE_BLACK(1),
+        NONE(2);
+
+        companion object {
+            private val map = values().associateBy(BackgroundNightMode::value)
+            fun fromInt(value: Int) = map[value] ?: DIM
+        }
+    }
+
+    var homeBackgroundNightMode: BackgroundNightMode
+        get() {
+            val value = prefs.getInt("home-background-night-mode", BackgroundNightMode.DIM.value)
+            return BackgroundNightMode.fromInt(value)
+        }
+        set(mode) {
+            prefs.edit().putInt("home-background-night-mode", mode.value).apply()
+        }
+
+    var autoMonochromeButtonsAtNight: Boolean
+        get() = prefs.getBoolean("auto-monochrome-buttons-at-night", false)
+        set(value) { prefs.edit().putBoolean("auto-monochrome-buttons-at-night", value).apply() }
+
     var monochromeIcons: Boolean
-        get() = prefs.getBoolean("monochrome-icons", false)
-        set(value) { prefs.edit().putBoolean("monochrome-icons", value).apply() }
+        get() = autoMonochromeButtonsAtNight
+        set(value) { autoMonochromeButtonsAtNight = value }
 
     var useExtremeDarkMode: Boolean
         get() = prefs.getBoolean("use-extreme-dark-mode", false)
@@ -1411,10 +1684,9 @@ class Settings(private val context: Context) {
         get() = prefs.getInt("wait-for-wifi-timeout", 10)
         set(value) { prefs.edit().putInt("wait-for-wifi-timeout", value).apply() }
 
-    // 0 = Common Wifi (NSD), 1 = Wifi Direct P2P, 2 = Nearby Devices, 3 = Phone Hotspot (Host), 4 = Headunit Hotspot (Passive)
-    var helperConnectionStrategy: Int
-        get() = prefs.getInt("helper-connection-strategy", 2) // Default to Nearby Devices (2)
-        set(value) = prefs.edit().putInt("helper-connection-strategy", value).apply()
+    var helperConnectionStrategy: HelperStrategy
+        get() = HelperStrategy.byIdOrDefault(prefs.getInt("helper-connection-strategy", -1))
+        set(value) = prefs.edit().putInt("helper-connection-strategy", value.id).apply()
 
     var lastNearbyDeviceName: String
         get() = prefs.getString("last-nearby-device-name", "")!!
@@ -1425,14 +1697,14 @@ class Settings(private val context: Context) {
         set(value) = prefs.edit().putString("bluetooth-manager-service-name", value).apply()
 
     // Which network the Native AA mode (wifiConnectionMode 3) puts the phone on.
-    // 0 = WiFi Direct P2P group, 1 = this head unit's own hotspot (experimental).
+    // 0 = WiFi Direct P2P group, 1 = this head unit's own hotspot.
     //
     // Deliberately not folded into helperConnectionStrategy: that setting belongs to mode 2 and
     // means something different in every one of its five values. A wireless mode that reuses
     // another mode's selector is how the two call sites of the old usesWifiDirect() drifted apart.
-    var nativeApTransport: Int
-        get() = prefs.getInt("native-ap-transport", 0)
-        set(value) = prefs.edit().putInt("native-ap-transport", value).apply()
+    var nativeApStrategy: NativeStrategy
+        get() = NativeStrategy.byIdOrDefault(prefs.getInt("native-ap-transport", -1))
+        set(value) = prefs.edit().putInt("native-ap-transport", value.id).apply()
 
     // Whether the Native AA handshake opens with a WifiVersionRequest (Type 4), as real head units
     // and the OEM ZLink app do, instead of going straight to WifiStartRequest.
@@ -1447,6 +1719,51 @@ class Settings(private val context: Context) {
     var nativeWifiVersionExchange: Boolean
         get() = prefs.getBoolean("native-wifi-version-exchange", false)
         set(value) = prefs.edit().putBoolean("native-wifi-version-exchange", value).apply()
+
+    // ---------------------------------------------------------------------------------------------
+    // Standing connection failures.
+    //
+    // A record of observation rather than a preference, so these follow different rules from
+    // everything else in this file: nothing in a manager's stop()/start(), a mode change or a user
+    // exit clears them. Each is cleared only by the condition itself ceasing to be true, at the one
+    // site that can know that. See utils/ConnectionIssues.
+    //
+    // Wall clock, not SystemClock.elapsedRealtime(): the banner renders a time and these outlive a
+    // reboot, which an elapsed-realtime stamp does not survive. Every other stamp on this route is
+    // elapsed realtime, so the AtEpochMs suffix is the reminder that these are not.
+    //
+    // 0 means "not standing" in all four.
+    // ---------------------------------------------------------------------------------------------
+
+    /** The phone connected over Bluetooth, we wrote, and nothing ever came back. */
+    var connectionIssueBluetoothSilentAtEpochMs: Long
+        get() = prefs.getLong("connection-issue-bt-silent", 0L)
+        set(value) = prefs.edit().putLong("connection-issue-bt-silent", value).apply()
+
+    /** No usable BSSID, which the WiFi Direct route aborts on rather than sending. */
+    var connectionIssueBssidAtEpochMs: Long
+        get() = prefs.getLong("connection-issue-bssid", 0L)
+        set(value) = prefs.edit().putLong("connection-issue-bssid", value).apply()
+
+    /** The device will not name its own access point, so the phone had nothing to join. */
+    var connectionIssueHotspotConfigAtEpochMs: Long
+        get() = prefs.getLong("connection-issue-hotspot-config", 0L)
+        set(value) = prefs.edit().putLong("connection-issue-hotspot-config", value).apply()
+
+    /** No access point was up at all, so there was no network to send the phone to. */
+    var connectionIssueHotspotOffAtEpochMs: Long
+        get() = prefs.getLong("connection-issue-hotspot-off", 0L)
+        set(value) = prefs.edit().putLong("connection-issue-hotspot-off", value).apply()
+
+    /**
+     * When the user last dismissed the failure banner.
+     *
+     * Compared against the raise stamps rather than clearing them, so a dismissal hides the
+     * occurrence the user has seen and the next failure brings the banner back on its own.
+     */
+    var connectionIssueDismissedAtEpochMs: Long
+        get() = prefs.getLong("connection-issue-dismissed-at", 0L)
+        set(value) = prefs.edit().putLong("connection-issue-dismissed-at", value).apply()
 
     // Manual fallback for dual-radio head units whose second radio isn't discoverable via
     // ServiceManager.listServices() at all. Empty = disabled (rely on automatic discovery only).
@@ -1474,6 +1791,25 @@ class Settings(private val context: Context) {
     var hotspotPassword: String
         get() = prefs.getString("hotspot-password", "")!!
         set(value) = prefs.edit().putString("hotspot-password", value).apply()
+
+    // Which band to ask for when this app brings the head unit's access point up.
+    // 0 = automatic (5 GHz, falling back to 2.4 GHz), 1 = 5 GHz only, 2 = 2.4 GHz only.
+    //
+    // 5 GHz is the default because it is the only band measured to carry a full-resolution stream:
+    // on 2.4 GHz a 1080p/60 session connects, opens the video channel and dies having sent nothing,
+    // while the same access point carries 800x480/30 indefinitely. So "5 GHz only" is the setting
+    // for a unit whose fallback lands somewhere that shows no picture, and "2.4 GHz only" is for a
+    // radio that will not host 5 GHz at all, at a lower resolution and frame rate.
+    //
+    // Plenty of head units refuse setSoftApConfiguration() outright, and on those this has no
+    // effect whatever it is set to: the band request never reaches the framework and the access
+    // point comes up on whatever the device already had. The log says which of those happened.
+    //
+    // Applies at the next hotspot bring-up, so it needs a reconnect rather than only a write. See
+    // SoftApBandPolicy, which is where the ordering lives.
+    var hotspotBand: Int
+        get() = prefs.getInt("hotspot-band", 0)
+        set(value) = prefs.edit().putInt("hotspot-band", value).apply()
 
     // Set once this device has failed to bring its own access point back up after the app took it
     // down, which is the only way to find out that it cannot — no API answers the question in

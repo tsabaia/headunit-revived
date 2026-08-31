@@ -5,11 +5,8 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import com.andrerinas.openheadunit.aap.AapSslContext
 import com.andrerinas.openheadunit.aap.AapTransport
-import com.andrerinas.openheadunit.aap.KeyDebouncePolicy
-import com.andrerinas.openheadunit.aap.MediaKeyRoutingPolicy
-import com.andrerinas.openheadunit.aap.PlaybackFocusPolicy
-import com.andrerinas.openheadunit.aap.UnresponsivePeerPolicy
-import com.andrerinas.openheadunit.aap.VideoStarvationPolicy
+import com.andrerinas.openheadunit.input.MediaKeyRoutingPolicy
+import com.andrerinas.openheadunit.decoder.audio.PlaybackFocusPolicy
 import com.andrerinas.openheadunit.utils.AppLog
 import com.andrerinas.openheadunit.utils.BluetoothHelper
 import com.andrerinas.openheadunit.main.BackgroundNotification
@@ -18,8 +15,8 @@ import com.andrerinas.openheadunit.utils.Settings
 import com.andrerinas.openheadunit.utils.HeadUnitScreenConfig
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import com.andrerinas.openheadunit.decoder.AudioDecoder
-import com.andrerinas.openheadunit.decoder.VideoDecoder
+import com.andrerinas.openheadunit.decoder.audio.AudioDecoder
+import com.andrerinas.openheadunit.decoder.video.VideoDecoder
 import android.media.AudioManager
 import android.os.Build
 import android.os.SystemClock
@@ -29,13 +26,19 @@ import com.andrerinas.openheadunit.aap.protocol.proto.MediaPlayback
 import java.net.Socket
 import android.view.KeyEvent
 import com.andrerinas.openheadunit.aap.protocol.messages.TouchEvent
-import com.andrerinas.openheadunit.aap.protocol.proto.Input
 import com.andrerinas.openheadunit.aap.protocol.proto.Input.TouchEvent.PointerAction
+import com.andrerinas.openheadunit.connection.projection.AbstractUsbProjectionConnection
+import com.andrerinas.openheadunit.connection.projection.ProjectionConnection
+import com.andrerinas.openheadunit.connection.projection.LibusbProjectionConnection
+import com.andrerinas.openheadunit.connection.projection.SocketProjectionConnection
+import com.andrerinas.openheadunit.connection.projection.StandardUsbProjectionConnection
+import com.andrerinas.openheadunit.connection.usb.UsbDeviceCompat
+import com.andrerinas.openheadunit.connection.wifi.modes.helper.NearbySocket
 
 /**
  * Central connection and transport lifecycle manager.
  *
- * CommManager owns the full lifecycle of both the physical connection ([AccessoryConnection])
+ * CommManager owns the full lifecycle of both the physical connection ([com.andrerinas.openheadunit.connection.projection.ProjectionConnection])
  * and the AAP protocol layer ([AapTransport]). It exposes a single [connectionState] flow as
  * the source of truth; all consumers (AapService, AapProjectionActivity, UI fragments) observe
  * this flow reactively instead of being called imperatively.
@@ -150,7 +153,7 @@ class CommManager(
     /**
      * Consecutive handshakes against one endpoint where the peer accepted the connection and then
      * sent nothing at all. Read by the discovery rescheduler to back off — see
-     * [com.andrerinas.openheadunit.aap.UnresponsivePeerPolicy].
+     * [com.andrerinas.openheadunit.connection.UnresponsivePeerPolicy].
      *
      * Counted here rather than from a [ConnectionState.Error] collector because that state is not
      * observable: [connectionState] is a `MutableStateFlow`, so collection is conflated, and
@@ -163,7 +166,7 @@ class CommManager(
     /** The endpoint [silentPeerFailures] is counting; a different one starts its own streak. */
     @Volatile private var silentPeerEndpoint: String? = null
     var onUpdateUiConfigReplyReceived: (() -> Unit)? = null
-    @Volatile private var _connection: AccessoryConnection? = null
+    @Volatile private var _connection: ProjectionConnection? = null
 
     /**
      * Tracks the most-recently-launched [doDisconnect] coroutine.
@@ -225,15 +228,14 @@ class CommManager(
      * has to ask the session, not the settings.
      */
     val isWirelessSession: Boolean
-        get() = _connection is SocketAccessoryConnection
+        get() = _connection is SocketProjectionConnection
 
     /**
      * Returns `true` if the current USB connection is to [device].
      * Used by AapService to decide whether a USB detach event should trigger a disconnect.
      */
     fun isConnectedToUsbDevice(device: UsbDevice): Boolean =
-        (_connection as? UsbAccessoryConnection)?.isDeviceRunning(device) == true ||
-        (_connection as? LibusbAccessoryConnection)?.isDeviceRunning(device) == true
+        (_connection as? AbstractUsbProjectionConnection)?.isDeviceRunning(device) == true
 
     // -----------------------------------------------------------------------------------------
     // connect() overloads — one for each transport type
@@ -268,9 +270,9 @@ class CommManager(
             _connectionState.emit(ConnectionState.Connecting)
             _connection?.disconnect()
             _connection = if (settings.useLibusb) {
-                LibusbAccessoryConnection(usbManager, device)
+                LibusbProjectionConnection(usbManager, device)
             } else {
-                UsbAccessoryConnection(usbManager, device)
+                StandardUsbProjectionConnection(usbManager, device)
             }
 
             if (_connection?.connect() ?: false) {
@@ -287,7 +289,7 @@ class CommManager(
 
     /**
      * Wraps an already-connected [Socket] (e.g. accepted by `WirelessServer`) in a
-     * [SocketAccessoryConnection] and advances to [ConnectionState.Connected].
+     * [SocketProjectionConnection] and advances to [ConnectionState.Connected].
      *
      * The socket must already be connected; this overload skips the TCP handshake and only
      * sets up the AAP framing layer.
@@ -318,7 +320,7 @@ class CommManager(
         try {
             _connectionState.emit(ConnectionState.Connecting)
             _connection?.disconnect()
-            _connection = SocketAccessoryConnection(socket, context)
+            _connection = SocketProjectionConnection(socket, context)
 
             if (_connection?.connect() ?: false) {
                 // [FIX] Don't overwrite NEARBY connection type with WIFI + localhost IP (::1)
@@ -352,7 +354,7 @@ class CommManager(
         try {
             _connectionState.emit(ConnectionState.Connecting)
             _connection?.disconnect()
-            _connection = SocketAccessoryConnection(ip, port, context)
+            _connection = SocketProjectionConnection(ip, port, context)
 
             if (_connection?.connect() ?: false) {
                 settings.saveLastConnection(type = Settings.CONNECTION_TYPE_WIFI, ip = ip)
@@ -464,17 +466,18 @@ class CommManager(
             UnresponsivePeerPolicy.countAfterSilentFailure(silentPeerFailures, silentPeerEndpoint, endpoint)
         silentPeerEndpoint = endpoint
         // Only Android Auto's head unit server — the peer on 5277, so the discovery path and Self
-        // Mode — has something the user can restart. The phone dialling our own server on 5288 and
-        // the Nearby helper can both reach this branch, and sending their users into Android Auto's
-        // developer settings after a switch they never turned on would be worse than saying nothing.
+        // Mode — is something the user can restart. The phone dialling our own server on 5288 and
+        // the Nearby helper can both reach this branch, and sending their users off to force stop
+        // Android Auto after a switch they never turned on would be worse than saying nothing.
         if (UnresponsivePeerPolicy.shouldExplain(silentPeerFailures) && endpoint?.endsWith(":5277") == true) {
             AppLog.e(
                 "CommManager: $endpoint has accepted $silentPeerFailures connections in a row " +
                     "without answering any of them. Slowing discovery to one attempt every " +
-                    "${UnresponsivePeerPolicy.BACKOFF_RESCAN_MS / 1000}s. Android Auto's head unit " +
-                    "server does not recover on its own once this happens — stop and start it again " +
-                    "on the phone, in Android Auto's developer settings, and this will reconnect by " +
-                    "itself."
+                    "${UnresponsivePeerPolicy.BACKOFF_RESCAN_MS / 1000}s. Android Auto hands each " +
+                    "accepted connection to its own car service and waits there with no timeout, so " +
+                    "it does not recover on its own and restarting the server does not clear it. " +
+                    "Force stop Android Auto on the phone, and reboot it if that does not help; this " +
+                    "will reconnect by itself."
             )
         }
     }
@@ -532,6 +535,24 @@ class CommManager(
             _connectionState.emit(ConnectionState.Error("Start reading failed: ${e.message}"))
             disconnect()
         }
+    }
+
+    /** Reports a failure and tears the connection down with it. */
+    suspend fun emitError(msg: String) {
+        _connectionState.emit(ConnectionState.Error(msg))
+        disconnect()
+    }
+
+    /**
+     * Reports a failure without touching the connection.
+     *
+     * For a caller that has run out of patience rather than out of hope: a Self Mode launch that has
+     * not reported in yet may still be in flight, and the server it will arrive on, plus the dummy
+     * VPN it was handed, both have to stay up for that to happen. See
+     * [com.andrerinas.openheadunit.connection.self.SelfLaunchTimeoutPolicy.mayDisconnect].
+     */
+    suspend fun reportError(msg: String) {
+        _connectionState.emit(ConnectionState.Error(msg))
     }
 
     /**
@@ -759,8 +780,8 @@ class CommManager(
      * for - which is what a video-black failure looks like, and has been the decisive line in four
      * rounds of hardware testing.
      *
-     * Two policies decide when this is warranted, and nothing else should: [WarmRelaunchKeyframePolicy]
-     * for a surface that has never shown a frame, and [KeyframeCycleEscalationPolicy] for a picture
+     * Two policies decide when this is warranted, and nothing else should: [com.andrerinas.openheadunit.decoder.video.WarmRelaunchKeyframePolicy]
+     * for a surface that has never shown a frame, and [com.andrerinas.openheadunit.decoder.video.KeyframeCycleEscalationPolicy] for a picture
      * left corrupt by a shed reference frame. The latter sends its own release from [AapTransport]
      * rather than calling here, because it has to pair the release with a regain on the send handler.
      * Releasing focus across a stream that is rendering is a known way to lose one permanently, which

@@ -4,13 +4,18 @@ import android.content.Context
 import com.andrerinas.openheadunit.App
 import com.andrerinas.openheadunit.aap.AapMessage
 import com.andrerinas.openheadunit.aap.AapService
-import com.andrerinas.openheadunit.aap.KeyCode
+import com.andrerinas.openheadunit.aap.NarrowBandProfilePolicy
+import com.andrerinas.openheadunit.aap.VehicleIdentityPolicy
+import com.andrerinas.openheadunit.aap.VehicleTypePolicy
+import com.andrerinas.openheadunit.input.KeyCode
 import com.andrerinas.openheadunit.aap.protocol.AudioConfigs
 import com.andrerinas.openheadunit.aap.protocol.Channel
+import com.andrerinas.openheadunit.aap.protocol.MicCaptureFormat
 import com.andrerinas.openheadunit.aap.protocol.proto.Control
 import com.andrerinas.openheadunit.aap.protocol.proto.Media
 import com.andrerinas.openheadunit.aap.protocol.proto.Sensors
-import com.andrerinas.openheadunit.decoder.VideoDecoder
+import com.andrerinas.openheadunit.connection.wifi.direct.WifiBandCapability
+import com.andrerinas.openheadunit.decoder.video.VideoDecoder
 import com.andrerinas.openheadunit.utils.AppLog
 import com.andrerinas.openheadunit.utils.HeadUnitScreenConfig
 import com.google.protobuf.Message
@@ -33,11 +38,11 @@ class ServiceDiscoveryResponse(private val context: Context)
                     if (settings.useGpsForNavigation) {
                         sources.addSensors(makeSensorType(Sensors.SensorType.LOCATION))
                     }
-                    
+
                     // Always announce Night sensor, as we control it via NightModeManager
                     sources.addSensors(makeSensorType(Sensors.SensorType.NIGHT))
                     AppLog.i("[ServiceDiscovery] Announcing NIGHT sensor support. Strategy: ${settings.nightMode}")
-                    
+
                 }.build()
             }.build()
 
@@ -51,14 +56,14 @@ class ServiceDiscoveryResponse(private val context: Context)
                                 settings.forceSoftwareDecoding &&
                                 when (settings.softwareVideoDecoder) {
                                     com.andrerinas.openheadunit.utils.Settings.SoftwareVideoDecoder.BUNDLED_FFMPEG ->
-                                        com.andrerinas.openheadunit.decoder.VideoDecoder.isBundledHevcDecoderAvailable()
+                                        com.andrerinas.openheadunit.decoder.video.VideoDecoder.isBundledHevcDecoderAvailable()
                                     com.andrerinas.openheadunit.utils.Settings.SoftwareVideoDecoder.DEVICE_MEDIACODEC ->
-                                        com.andrerinas.openheadunit.decoder.VideoDecoder.isHevcDecoderAvailable(includeSoftware = true)
+                                        com.andrerinas.openheadunit.decoder.video.VideoDecoder.isHevcDecoderAvailable(includeSoftware = true)
                                 }
                     val hevcAvailableForUserChoice =
-                        com.andrerinas.openheadunit.decoder.VideoDecoder.isHevcSupported() || explicitSoftwareHevc
+                        com.andrerinas.openheadunit.decoder.video.VideoDecoder.isHevcSupported() || explicitSoftwareHevc
                     val hevcAvailableForHighResolution =
-                        com.andrerinas.openheadunit.decoder.VideoDecoder.isHevcReliable() || explicitSoftwareHevc
+                        com.andrerinas.openheadunit.decoder.video.VideoDecoder.isHevcReliable() || explicitSoftwareHevc
 
                     val codecToRequest = when (settings.videoCodec) {
                         "H.265" -> if (hevcAvailableForUserChoice) {
@@ -67,11 +72,11 @@ class ServiceDiscoveryResponse(private val context: Context)
                             Media.MediaCodecType.MEDIA_CODEC_VIDEO_H264_BP
                         }
                         "Auto" -> {
-                            // Only use H.265 in Auto mode for 4K or if explicitly needed, 
+                            // Only use H.265 in Auto mode for 4K or if explicitly needed,
                             // otherwise prefer stable H.264
                             val negotiatedResolution = HeadUnitScreenConfig.negotiatedResolutionType
                             if (negotiatedResolution == Control.Service.MediaSinkService.VideoConfiguration.VideoCodecResolutionType._3840x2160 &&
-                                com.andrerinas.openheadunit.decoder.VideoDecoder.isHevcReliable()) {
+                                com.andrerinas.openheadunit.decoder.video.VideoDecoder.isHevcReliable()) {
                                 Media.MediaCodecType.MEDIA_CODEC_VIDEO_H265
                             } else {
                                 Media.MediaCodecType.MEDIA_CODEC_VIDEO_H264_BP
@@ -102,6 +107,7 @@ class ServiceDiscoveryResponse(private val context: Context)
 
                     AppLog.i("[ServiceDiscovery] NegotiatedResolution is: ${HeadUnitScreenConfig.getNegotiatedWidth()}x${HeadUnitScreenConfig.getNegotiatedHeight()}")
                     logNegotiatedCodecCapability(effectiveCodec, settings)
+                    logNarrowBandProfile(context, settings)
                     AppLog.i("[ServiceDiscovery] Margins are: ${phoneWidthMargin}x${phoneHeightMargin}")
 
                     mediaSinkServiceBuilder.addVideoConfigs(Control.Service.MediaSinkService.VideoConfiguration.newBuilder().apply {
@@ -128,7 +134,7 @@ class ServiceDiscoveryResponse(private val context: Context)
                         setWidth(HeadUnitScreenConfig.getNegotiatedWidth()) // Use negotiated width
                         setHeight(HeadUnitScreenConfig.getNegotiatedHeight()) // Use negotiated height
                     }.build()
-                    
+
                     if (settings.enableRotary) {
                         AppLog.i("[ServiceDiscovery] Announcing Rotary/Touchpad support")
                         it.touchpad = Control.Service.InputSourceService.TouchConfig.newBuilder().apply {
@@ -136,7 +142,7 @@ class ServiceDiscoveryResponse(private val context: Context)
                             setHeight(HeadUnitScreenConfig.getNegotiatedHeight())
                         }.build()
                     }
-                    
+
                     it.addAllKeycodesSupported(KeyCode.supported)
                 }.build()
             }.build()
@@ -157,7 +163,9 @@ class ServiceDiscoveryResponse(private val context: Context)
             services.add(audio2)
 
             if (settings.enableAudioSink) {
-                if (!AapService.selfMode) {
+                val isSelfMode = AapService.instance?.isSelfModeActive() ?: false
+
+                if (!isSelfMode) {
                     val audio1 = Control.Service.newBuilder().also { service ->
                         service.id = Channel.ID_AU1
                         service.mediaSinkService = Control.Service.MediaSinkService.newBuilder().also {
@@ -169,7 +177,7 @@ class ServiceDiscoveryResponse(private val context: Context)
                     services.add(audio1)
                 }
 
-                if (!AapService.selfMode) {
+                if (!isSelfMode) {
                     val audio0 = Control.Service.newBuilder().also { service ->
                         service.id = Channel.ID_AUD
                         service.mediaSinkService = Control.Service.MediaSinkService.newBuilder().also {
@@ -180,21 +188,47 @@ class ServiceDiscoveryResponse(private val context: Context)
                     }.build()
                     services.add(audio0)
                 }
+            } else {
+                // Without this line a muted head unit is indistinguishable from a broken one. The
+                // channels are never declared, so the phone never opens them, so nothing about the
+                // silence appears anywhere in the log and every audio instrument reads zero. It
+                // has already cost one test round. Named in the user's terms so a reporter can act
+                // on it, the same way the Bluetooth service does below.
+                AppLog.i("Audio sink is off in Settings. Skipping the media and speech audio " +
+                        "channels - the phone will not send audio and this is not a fault")
             }
 
-            // Microphone Service (Channel 7) - Always required for AA connection (Assistant)
-            val mic = Control.Service.newBuilder().also { service ->
-                service.id = Channel.ID_MIC
-                service.mediaSourceService = Control.Service.MediaSourceService.newBuilder().also {
-                    it.type = Media.MediaCodecType.MEDIA_CODEC_AUDIO_PCM
-                    it.audioConfig = Media.AudioConfiguration.newBuilder().apply {
-                        sampleRate = 16000
-                        numberOfBits = 16
-                        numberOfChannels = 1
+            // Microphone Service (Channel 7), announced only when this head unit will record.
+            // Advertising it and then declining every request leaves the assistant with nothing:
+            // the phone chooses its recorder once at projection start, and takes its own only for a
+            // motorcycle that offers it no microphone. Omitting it is safe only because we claim a
+            // motorcycle - the phone aborts connection setup with "No audio/mic" for any other
+            // type, so the two go together and neither works alone.
+            // The format comes from MicCaptureFormat so the announcement and the capture cannot
+            // drift again, and it is never anything but 16 kHz: the phone validates this config and
+            // rejects everything outside {16000, 48000} Hz, 16 bits, 1 or 2 channels. 48 kHz is in
+            // that set for the media channel, not for this one - AudioConfiguration is shared by
+            // every audio service and the validator accepts the union.
+            if (settings.useHeadUnitMicrophone) {
+                val mic = Control.Service.newBuilder().also { service ->
+                    service.id = Channel.ID_MIC
+                    service.mediaSourceService = Control.Service.MediaSourceService.newBuilder().also {
+                        it.type = Media.MediaCodecType.MEDIA_CODEC_AUDIO_PCM
+                        it.audioConfig = Media.AudioConfiguration.newBuilder().apply {
+                            sampleRate = MicCaptureFormat.SAMPLE_RATE_HZ
+                            numberOfBits = MicCaptureFormat.BITS
+                            numberOfChannels = MicCaptureFormat.CHANNELS
+                        }.build()
                     }.build()
                 }.build()
-            }.build()
-            services.add(mic)
+                services.add(mic)
+            } else {
+                AppLog.i("Head unit microphone is off in Settings. Skipping the microphone " +
+                        "service - the phone is told this head unit cannot record, no voice " +
+                        "request will arrive here, and this is not a fault. This needs the phone " +
+                        "to keep our motorcycle claim, which Android 10 and older do not, so a " +
+                        "session that connects once and then stops on an older phone may be this")
+            }
 
             // Bluetooth Service
             if (settings.bluetoothAddress.isNotEmpty()) {
@@ -210,7 +244,12 @@ class ServiceDiscoveryResponse(private val context: Context)
                 }.build()
                 services.add(bluetooth)
             } else {
-                AppLog.i("BT MAC Address is empty. Skip bluetooth service")
+                // What the omission costs, in the user's terms. Android Auto keeps telephony
+                // disabled until a hands-free link is up, and this is the message that tells the
+                // phone where to connect one - so a blank field is why calls stay on the phone.
+                AppLog.i("BT MAC Address is empty, so no Bluetooth service is announced. The phone " +
+                    "is not told where to connect hands-free, and Android Auto keeps phone calls " +
+                    "on the phone until it is")
             }
 
             val mediaPlaybackStatus = Control.Service.newBuilder().also { service ->
@@ -229,18 +268,32 @@ class ServiceDiscoveryResponse(private val context: Context)
             }.build()
             services.add(navigationStatus)
 
+            val sessionConfig = (if (settings.hideClock) 0x01 else 0) or
+                (if (settings.hidePhoneSignal) 0x02 else 0) or
+                (if (settings.hideBatteryLevel) 0x04 else 0)
+            // 0x08 is "CAN_PLAY_NATIVE_MEDIA_DURING_VR"
+
+            // Every type gets its own announced id. The phone looks its stored record up by
+            // make/model/year and a hash of this id, and on a hit it stamps the stored vehicle type
+            // over the one we declare. A different id misses that lookup, so our claim survives;
+            // reusing one would make a changed type arrive as the old one.
+            val vehicleType = VehicleTypePolicy.vehicleType(
+                settings.vehicleType, settings.useHeadUnitMicrophone)
+            val announcedVehicleId = VehicleIdentityPolicy.vehicleId(settings.vehicleId, vehicleType)
+
             return Control.ServiceDiscoveryResponse.newBuilder().apply {
                 make = settings.vehicleMake
-                model = settings.vehicleModel
+                model = settings.vehicleModel // fun fact: AA checks internally if it ends with "truck"?!
                 year = settings.vehicleYear
-                vehicleId = settings.vehicleId
+                vehicleId = announcedVehicleId
                 headUnitModel = settings.headUnitModel
                 headUnitMake = settings.headUnitMake
                 headUnitSoftwareBuild = "1"
                 headUnitSoftwareVersion = "0.1.0"
                 driverPosition = if (settings.rightHandDrive) Control.DriverPosition.DRIVER_POSITION_RIGHT else Control.DriverPosition.DRIVER_POSITION_LEFT
                 canPlayNativeMediaDuringVr = false
-                hideProjectedClock = false
+                hideProjectedClock = settings.hideClock
+                sessionConfiguration = sessionConfig
                 setDisplayName(settings.vehicleDisplayName)
 
                 setHeadunitInfo(com.andrerinas.openheadunit.aap.protocol.proto.Common.HeadUnitInfo.newBuilder().apply {
@@ -249,9 +302,14 @@ class ServiceDiscoveryResponse(private val context: Context)
                     setMake(settings.vehicleMake)
                     setModel(settings.vehicleModel)
                     setYear(settings.vehicleYear)
-                    setVehicleId(settings.vehicleId)
+                    setVehicleId(announcedVehicleId)
                     setHeadUnitSoftwareBuild("1")
                     setHeadUnitSoftwareVersion("0.1.0")
+                    // The phone stores this per head unit and reads it in a dozen places, and an
+                    // absent field reads as a car. A motorcycle is the only claim it answers by
+                    // recording with its own microphone, so the microphone setting overrides the
+                    // user's choice here.
+                    setVehicleType(vehicleType)
                 }.build())
 
                 addAllServices(services)
@@ -260,16 +318,16 @@ class ServiceDiscoveryResponse(private val context: Context)
 
         /**
          * Records whether a decoder on this device claims it can carry the profile we are about to
-         * ask the phone for.
+         * ask the phone for. Diagnostic only; nothing acts on the answer.
          *
-         * Nothing acts on the answer. It exists because this is the one place where the codec is
-         * decided - the 1440p rule above overrides the user's own choice - and until now nothing in
-         * the app asked a decoder anything before making it. A #219 reporter's Galaxy Tab S7 FE runs
-         * the resulting 2560x1440 HEVC on `c2.qti.hevc.decoder` and sheds frames in bursts, with the
-         * shedding confined to windows that also spent up to 2019ms of 5000 waiting for an input
-         * buffer. No log has ever said what that component claimed beforehand.
+         * This is the one place the codec is decided (the 1440p rule above overrides the user's
+         * choice), and nothing used to ask the decoder anything before making it - so a reporter
+         * log could never say whether the forced profile fit the hardware.
          *
-         * A WARN here from a unit that reports artifacts is what would justify revisiting the rule.
+         * A `sustains=false` WARN here is not by itself grounds to step the profile down: it has
+         * been seen from a unit whose throughput proved the decoder was keeping up, with the
+         * artifacts coming off the wire instead. Revisit the rule only when a log shows the decoder
+         * itself failing behind one of these lines.
          */
         private fun logNegotiatedCodecCapability(codec: Media.MediaCodecType, settings: com.andrerinas.openheadunit.utils.Settings) {
             val mime = when (codec) {
@@ -280,7 +338,7 @@ class ServiceDiscoveryResponse(private val context: Context)
             val width = HeadUnitScreenConfig.getNegotiatedWidth()
             val height = HeadUnitScreenConfig.getNegotiatedHeight()
             if (width <= 0 || height <= 0) return
-            val capability = com.andrerinas.openheadunit.decoder.DecoderCapabilityReport
+            val capability = com.andrerinas.openheadunit.decoder.video.DecoderCapabilityReport
                 .query(mime, width, height, settings.fpsLimit)
             if (capability == null) {
                 AppLog.i("[ServiceDiscovery] No decoder capability available for $mime at ${width}x$height")
@@ -294,6 +352,29 @@ class ServiceDiscoveryResponse(private val context: Context)
                         "Frames shed under load and the artifacts that follow are the expected consequence."
                 )
             }
+        }
+
+        /**
+         * Names the one case where the band and the frame rate we are about to ask for are known to
+         * be a bad pair. Says nothing on every other unit, and changes nothing on this one.
+         *
+         * Here rather than in `WifiDirectManager` because this is where the frame rate is decided,
+         * and the two halves of the advice have to be read together to mean anything.
+         */
+        private fun logNarrowBandProfile(context: Context, settings: com.andrerinas.openheadunit.utils.Settings) {
+            val advice = try {
+                NarrowBandProfilePolicy.advice(
+                    supports5Ghz = WifiBandCapability.supports5Ghz(context),
+                    fpsLimit = settings.fpsLimit,
+                    wirelessSession = App.provide(context).commManager.isWirelessSession,
+                )
+            } catch (e: Exception) {
+                // Service discovery must not fail over a diagnostic. A missing line is a missing
+                // line; a thrown one costs the session.
+                AppLog.d("[ServiceDiscovery] could not evaluate the band advice: ${e.message}")
+                null
+            }
+            advice?.let { AppLog.w("[ServiceDiscovery] $it") }
         }
 
         private fun makeSensorType(type: Sensors.SensorType): Control.Service.SensorSourceService.Sensor {

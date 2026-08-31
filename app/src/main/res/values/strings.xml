@@ -179,6 +179,12 @@
     <string name="dummy_content">DUMMY\nCONTENT</string>
     <string name="allowed">Allowed</string>
     <string name="ignored">Ignored</string>
+    <string name="blacklisted">Blacklisted</string>
+    <string name="usb_blacklist_title">USB Device Blacklist</string>
+    <string name="usb_blacklist_description">Devices in the blacklist will be completely ignored on connection (no auto-start, no prompts).</string>
+    <string name="add_to_blacklist">Add to Blacklist</string>
+    <string name="remove_from_blacklist">Remove from Blacklist</string>
+    <string name="usb_device_action_title">USB Device Action</string>
     <string name="exit">Exit</string>
     <string name="video">Android Auto</string>
     <string name="self_mode">Self Mode</string>
@@ -189,7 +195,7 @@
     <string name="wifi">WiFi</string>
     <string name="dpi">Pixel density (DPI)</string>
     <string name="pixel_aspect_ratio">Pixel aspect ratio</string>
-    <string name="mic_sample_rate">Mic sample rate</string>
+    <string name="mic_sample_rate">Mic capture rate</string>
     <string name="keymap">Keymap</string>
     <string name="night_mode">Dark Mode (Android Auto)</string>
     <string name="night_mode_threshold">Night Mode Threshold</string>
@@ -219,6 +225,43 @@
     <string name="use_gradient_background_description_on_auto">The app draws its own background with the gradient circle centered. Does not apply to Extreme Dark mode</string>
     <string name="use_gradient_background_description_off_auto">The app\'s classic background is being used. Does not apply to Extreme Dark mode</string>
     <string name="category_dark_mode">Dark Mode</string>
+    <string name="category_theming">Theming</string>
+    <string name="customization_title">Customization</string>
+    <string name="customization_description">Customize home screen background and visual appearance</string>
+    <string name="home_background_image">Background Image</string>
+    <string name="home_background_image_description">Choose a custom image for the main home screen</string>
+    <string name="home_background_default">Default (bg.png)</string>
+    <string name="home_background_custom">Custom Image</string>
+    <string name="btn_choose_image">Choose Image</string>
+    <string name="btn_reset_default">Reset to Default</string>
+    <string name="home_button_colors">Button Colors &amp; Gradients</string>
+    <string name="home_button_colors_description">Customize the colors and gradients of the 4 home screen buttons</string>
+    <string name="btn_color_self_mode">Self Mode Button</string>
+    <string name="btn_color_usb">USB Button</string>
+    <string name="btn_color_wifi">WiFi Button</string>
+    <string name="btn_color_settings">Settings Button</string>
+    <string name="btn_reset_colors">Reset All Button Colors</string>
+    <string name="btn_make_all_monochrome">Set all buttons to monochrome</string>
+    <string name="auto_monochrome_at_night">Switch to monochrome at night</string>
+    <string name="auto_monochrome_at_night_description">Switches colored buttons to subtle gray in dark mode to minimize driving glare</string>
+    <string name="bg_night_behavior_title">Background at Night</string>
+    <string name="bg_night_behavior_description">Controls how the background is displayed when dark mode is active</string>
+    <string name="bg_night_behavior_dim">Dim (50%)</string>
+    <string name="bg_night_behavior_pure_black">Pure Black (OLED)</string>
+    <string name="bg_night_behavior_none">Unchanged</string>
+    <string name="bg_style_title">Background Style</string>
+    <string name="bg_style_description">Choose the background appearance when no custom image is used</string>
+    <string name="bg_type_standard">Default (Classic Blue)</string>
+    <string name="bg_type_gradient">Gradient</string>
+    <string name="bg_type_pure_black">Pure Black (OLED)</string>
+    <string name="bg_type_custom">Custom Image</string>
+    <string name="pick_color_title">Pick Button Color</string>
+    <string name="color_preset_default">Default</string>
+    <string name="color_custom_hex">Hex Color</string>
+    <string name="home_button_scale">Button Size</string>
+    <string name="home_button_scale_description">Adjust the size of the 4 home screen buttons</string>
+    <string name="home_button_scale_preview">Live Home Screen Preview</string>
+    <string name="btn_reset_scale">Reset Button Size</string>
     <string name="category_automation">Automation</string>
     <string name="dark_mode_settings">Dark Mode Settings</string>
     <string name="app_theme_short">App</string>
@@ -376,7 +419,7 @@
     <string name="bt_permission_denied_title">Bluetooth Permission Required</string>
     <string name="bt_permission_denied_message">Bluetooth permission is required to select paired devices. Please grant it in app settings.</string>
     <string name="overlay_permission_title">Background Start Permission</string>
-    <string name="overlay_permission_description">To allow Open Headunit to open automatically when Bluetooth connects, please enable the "Display over other apps" permission in the next screen.</string>
+    <string name="overlay_permission_description">To allow Open Headunit to open automatically when Bluetooth connects, please enable the \"Display over other apps\" permission in the next screen.</string>
     <string name="open_settings">Settings</string>
     <string name="cannot_open_settings">Could not open system settings</string>
     <string name="right_hand_drive">Right-hand drive</string>
@@ -384,7 +427,7 @@
     <string name="wireless_connection_settings">Wireless Connection</string>
     <string name="category_graphic">Graphic</string>
 
-    <string name="static_bssid_title">Static BSSID</string>
+    <string name="static_bssid_title">Static BSSID (MAC Address)</string>
     <string name="static_bssid_enter_value">Enter BSSID (XX:XX:XX:XX:XX:XX)</string>
     <string name="static_bssid_desc">Manually set the BSSID for the wireless handshake if auto-detection is blocked by system permissions</string>
 
@@ -458,22 +501,72 @@
     <string name="playback_focus_mode_auto">Automatic</string>
     <string name="playback_focus_mode_always">Always</string>
     <string name="playback_focus_mode_never">Never</string>
-    <string name="playback_focus_mode_auto_hint">Pauses another player on the headunit (for example the radio) while Android Auto audio plays, but not while a Bluetooth audio link is connected — that link is usually the same phone, and pausing it would stop Android Auto\'s own sound.</string>
+    <string name="playback_focus_mode_auto_hint">Pauses another player on the headunit (for example the radio) while Android Auto audio plays. If that turns out to stop your phone\'s own playback instead, which happens when the headunit is the phone\'s Bluetooth speaker, it stops doing it and remembers. Choose this mode again to let it try once more.</string>
     <string name="playback_focus_mode_always_hint">Always pauses other audio while Android Auto plays. If your music stops after a second or two whenever Bluetooth is on, switch back to Automatic.</string>
     <string name="playback_focus_mode_never_hint">Never touches system audio focus. Other audio on the headunit may keep playing over Android Auto.</string>
     <string name="playback_focus_mode_static_hint">With Static Audio Focus on, this applies from the moment the phone connects and lasts the whole session, rather than only while audio is playing.</string>
     <string name="separate_audio_streams">Separate Audio Streams</string>
-    <string name="separate_audio_streams_description">Separate audio channels for music, calls, and notifications instead of a single multimedia stream (may not work correctly on some devices).</string>
+    <string name="separate_audio_streams_description">Give the Media, Guidance and System Sounds channels their own output streams instead of one shared multimedia stream (may not work correctly on some devices).</string>
+
+    <!-- Audio stream settings screen -->
+    <string name="audio_stream_settings">Audio Streams</string>
+    <string name="audio_stream_settings_description">Choose the system stream each Android Auto channel plays on.</string>
+    <string name="audio_stream_settings_info">Android Auto sends audio on three channels — Media, Guidance and System Sounds. Each one is handed to the head unit on a system stream, and which stream you pick decides the volume key it follows and, on many head units, whether the amplifier unmutes for it at all. Use the speaker button to hear a test tone on the stream before saving.</string>
+    <!-- The three audio channels Android Auto opens. One set of names, used by the Audio Streams
+         screen and by the Audio Volume Offset sliders, so both describe the same thing the same way. -->
+    <string name="audio_channel_media">Media</string>
+    <string name="audio_channel_media_description">App playback: music, podcasts, radio and audiobooks. The only channel sent in stereo (48 kHz).</string>
+    <string name="audio_channel_guidance">Guidance / Navigation</string>
+    <string name="audio_channel_guidance_description">Spoken turn-by-turn directions and the voice assistant\'s replies (16 kHz mono). </string>
+    <string name="audio_channel_system">System Sounds / Notification</string>
+    <!-- Shown in place of the three channel names when separate streams is off and all of them
+         share one output. Spelling every channel out is what tells the user the single picker
+         below covers the lot, so no separate "separate streams are off" note is needed. -->
+    <string name="audio_channel_all">Media, Guidance, Navigation, Notification and System</string>
+    <string name="audio_channel_all_short">all channels</string>
+    <string name="audio_channel_all_description">Every Android Auto audio channel — app playback, spoken guidance, alerts and notification sounds — shares this one output stream.</string>
+    <string name="audio_channel_system_description">Android Auto\'s own alerts, chimes and notification sounds (16 kHz mono).</string>
+    <string name="audio_stream_test">Play a test tone on this stream</string>
+    <string name="audio_stream_muted_warning">%1$s is muted on this device — raise its volume to hear the test tone.</string>
+    <string name="audio_stream_test_failed">Could not play a test tone on this stream.</string>
+    <string name="audio_stream_pick_title">Stream for %1$s</string>
+    <!-- Output streams, named by id. Only the ones this device actually reports are offered, so a
+         head unit with a vendor stream shows that too - under the name its own framework gives it. -->
+    <string name="audio_stream_voice_call">Voice call</string>
+    <string name="audio_stream_system">System</string>
+    <string name="audio_stream_ring">Ringtone</string>
+    <string name="audio_stream_music">Media (music)</string>
+    <string name="audio_stream_alarm">Alarm</string>
+    <string name="audio_stream_notification">Notification</string>
+    <string name="audio_stream_bluetooth_sco">Bluetooth SCO</string>
+    <string name="audio_stream_system_enforced">System (enforced)</string>
+    <string name="audio_stream_dtmf">DTMF</string>
+    <string name="audio_stream_tts">Text-to-speech</string>
+    <string name="audio_stream_accessibility">Accessibility</string>
+    <string name="audio_stream_assistant">Assistant</string>
+    <!-- A stream this device has that stock Android does not, e.g. "MUSIC_SECOND (10)". -->
+    <string name="audio_stream_vendor_format" translatable="false">%1$s (%2$d)</string>
+    <!-- A stream with no name at all: only its number is known. -->
+    <string name="audio_stream_unnamed_format">Stream %1$d</string>
+    <!-- A saved stream that this device does not have, e.g. after restoring a backup. -->
+    <string name="audio_stream_unavailable_format">Stream %1$d (not on this device)</string>
+    <string name="audio_stream_vendor_info">This head unit has output streams that stock Android does not, listed below under the names its own system gives them. They are often the ones the car\'s amplifier is actually wired to, so try them with the speaker button if a channel stays silent.</string>
+
+    <!-- Onboarding: audio step -->
+    <string name="onb_audio_title">Audio</string>
+    <string name="onb_audio_help">Pick the system stream each Android Auto channel plays on, and tap the speaker to hear it. If a channel stays silent in the car, moving it to another stream is usually the fix.</string>
+    <string name="onb_audio_more_hint">You can change these again later under Settings → Audio Streams.</string>
     <string name="use_aac_audio">Use AAC Audio</string>
     <string name="use_aac_audio_description">Use AAC codec for audio to save bandwidth (Experimental).</string>
     <string name="attach_hw_dsp_equalizer">Hardware DSP Equalizer Trigger</string>
     <string name="attach_hw_dsp_equalizer_description">Attaches a dummy Equalizer effect to the audio session to force hardware DSP routing on specific headunits. Keep disabled if using ViPER4Android / ViperFX or if sound is muffled on older Android versions.</string>
     <string name="audio_volume_offset">Audio Volume Offset</string>
-    <string name="media_volume_offset">Media Volume Offset</string>
-    <string name="assistant_volume_offset">Assistant Volume Offset</string>
-    <string name="navigation_volume_offset">Navigation Volume Offset</string>
     <string name="microphone_settings">Microphone Settings</string>
+    <string name="use_head_unit_microphone">Head unit microphone</string>
+    <string name="use_head_unit_microphone_description">On: Android Auto hears this device\'s microphone. Off: this device never records and the phone uses its own microphone, or a headset or intercom paired to the phone, so the voice assistant still works. Needs Android 11 or newer on the phone.</string>
+    <string name="head_unit_microphone_off_info">The head unit microphone is off, so nothing below applies. Android Auto is told this device cannot record and is a motorcycle, which is what makes the phone record for itself. On Android 10 and older the phone forgets that between sessions and may stop connecting.</string>
     <string name="microphone_settings_description">Configure microphone input and audio processing.</string>
+    <string name="mic_wire_format_info">Android Auto always receives the microphone at 16000 Hz, 16-bit, mono. It rejects anything else, so these settings change what the hardware does, not what the phone is sent.</string>
     <string name="mic_input_source">Microphone Input Source</string>
     <string name="mic_input_source_description">Choose the audio source for the microphone.</string>
     <string-array name="mic_input_sources">
@@ -486,9 +579,9 @@
     <string name="mic_echo_canceler">Echo cancellation (AEC)</string>
     <string name="mic_echo_canceler_description">Attempts to remove echo from the microphone. Disable if you experience silence or distortion.</string>
     <string name="mic_noise_suppressor">Noise suppression (NS)</string>
-    <string name="mic_noise_suppressor_description">Attempts to reduce background noise. Disable if your voice sounds muffled.</string>
+    <string name="mic_noise_suppressor_description">Attempts to reduce background noise. Android Auto expects this off on a single microphone and does its own processing. Disable if your voice sounds muffled.</string>
     <string name="mic_auto_gain_control">Automatic gain control (AGC)</string>
-    <string name="mic_auto_gain_control_description">Automatically adjusts microphone volume. Disable if the volume is unstable.</string>
+    <string name="mic_auto_gain_control_description">Automatically adjusts microphone volume. Android Auto expects this off and applies its own gain control; the two together usually sound worse. Disable if the volume is unstable.</string>
     <string name="mic_feature_unsupported">This feature is not supported on your device.</string>
 
     <!-- Info Settings -->
@@ -690,14 +783,11 @@
     <string name="debug_video_fault_rate" translatable="false">Fault rate (one in N)</string>
     <string name="debug_video_fault_budget" translatable="false">Fault budget</string>
     <string name="debug_force_memory_profile" translatable="false">Force memory profile</string>
-    <string name="debug_force_p2p_band_24" translatable="false">Force WiFi Direct onto 2.4 GHz</string>
-    <string name="p2p_legacy_5ghz" translatable="false">Ask for 5 GHz on Android 9 and older</string>
-    <string name="p2p_legacy_5ghz_description" translatable="false">Below Android 10 there is no way to request a band, so the WiFi Direct group lands wherever the driver puts it — often 2.4 GHz, shared with Bluetooth. This asks for a 5 GHz channel instead. Leave it off unless the picture or sound stutters: a unit whose WiFi Direct cannot host 5 GHz will fail to create a group, and the app then clears the request and retries once. No effect on Android 10 and newer.</string>
     <string name="p2p_legacy_5ghz_upper" translatable="false">Use the upper 5 GHz range</string>
-    <string name="p2p_legacy_5ghz_upper_description" translatable="false">Asks for channel 149 instead of channel 36. Try this only if channel 36 fails — some regions allow one range and not the other.</string>
-    <string name="debug_force_p2p_band_24_description" translatable="false">Native AA hosts its group on 2.4 GHz instead of asking for 5 GHz, and stops remaking a group that lands there. For reproducing 2.4 GHz link faults on a 5 GHz rig; leave off otherwise. Applies on the next connection.</string>
+    <string name="p2p_legacy_5ghz_upper_description" translatable="false">Asks for channel 149 instead of 36. Try only if 36 fails, since regions allow one range or the other.</string>
     <string name="debug_video_low_latency" translatable="false">Request decoder low-latency mode</string>
     <string name="debug_video_low_latency_description" translatable="false">Sets the vendor low-latency MediaFormat key when configuring the video decoder. Falls back automatically if the decoder rejects it.</string>
+    <string name="debug_video_feed_hold" translatable="false">Simulate a slow decoder</string>
     <string name="show_fps_counter_description">Display a real-time FPS overlay in the top-left corner during projection.</string>
 
     <!-- Auto-start permission strings -->
@@ -715,6 +805,8 @@
 
     <string name="kill_on_disconnect">Close app on disconnect</string>
     <string name="kill_on_disconnect_description">Automatically close the app when Android Auto disconnects</string>
+    <string name="raise_projection_during_call">Stay in Android Auto during calls</string>
+    <string name="raise_projection_during_call_description">Self Mode only. Brings the projection back over the phone\'s call screen so calls are answered and ended in the Android Auto interface</string>
     <string name="kill_on_disconnect_warning_title">Warning</string>
     <string name="kill_on_disconnect_warning">The following reconnection settings will conflict with closing the app on disconnect:\n\n%1$s\n\nYour initial connection settings (auto-connect, auto-start) will still work when the headunit turns on. However, after the first disconnection the app will close immediately instead of trying to reconnect.\n\nNote: Some aftermarket head units never fully shut down — they hibernate instead, similar to a phone that locks its screen but never actually powers off. With this option enabled, the app will close after the first disconnection and may not reopen automatically on the next ignition cycle.\n\nWould you like to disable the reconnection settings listed above?</string>
     <string name="kill_on_disconnect_disable_and_enable">Disable and enable</string>
@@ -744,6 +836,11 @@
     <string name="vehicle_year_label">Year</string>
     <string name="vehicle_year_description">Vehicle year</string>
     <string name="vehicle_id_label">Vehicle ID</string>
+    <string name="vehicle_type_label">Vehicle Type</string>
+    <string name="vehicle_type_car">Car</string>
+    <string name="vehicle_type_truck">Truck</string>
+    <string name="vehicle_type_motorcycle">Motorcycle</string>
+    <string name="vehicle_type_forced_by_microphone">The head unit microphone is off, so Android Auto is told this is a motorcycle whatever is picked here. That is what makes the phone record for itself.</string>
     <string name="vehicle_id_description">Internal identifier only. Changing this will cause your phone to treat this as a different vehicle, resetting your Android Auto preferences for this car.</string>
     <string name="head_unit_make_label">Make</string>
     <string name="head_unit_make_description">Head unit manufacturer</string>
@@ -758,7 +855,7 @@
     <string name="auto_enable_hotspot">Auto-Enable Hotspot</string>
     <string name="auto_enable_hotspot_description">Automatically starts a Wi-Fi hotspot on this device. (Won\'t work on every device)</string>
     <string name="hotspot_warning_title">Experimental Feature</string>
-    <string name="hotspot_warning_message">This feature uses reflection and might not work on all devices. It may also require the "Modify system settings" permission to be granted manually.</string>
+    <string name="hotspot_warning_message">This feature uses reflection and might not work on all devices. It may also require the \"Modify system settings\" permission to be granted manually.</string>
     <string name="hotspot_permission_title">Permission Required</string>
     <string name="hotspot_permission_message">The hotspot feature requires the \"Modify system settings\" permission. Please enable it in the next screen.</string>
 
@@ -813,7 +910,7 @@
     <string name="loading_screen_select_file">Select file</string>
     <string name="loading_screen_remove">Remove</string>
     <string name="loading_screen_recommendation">Recommended resolution: %1$dx%2$d</string>
-    <string name="loading_screen_supported_formats">Supported: Images (PNG, JPG, BMP, WEBP, GIF) \u2022 Videos (MP4, MKV, WEBM, 3GP) \u2022 Max: 10 MB</string>
+    <string name="loading_screen_supported_formats">Supported: Images (PNG, JPG, BMP, WEBP, GIF) • Videos (MP4, MKV, WEBM, 3GP) • Max: 10 MB</string>
     <string name="loading_screen_no_media">No custom media selected</string>
     <string name="loading_screen_file_too_large">File is too large (max 10 MB)</string>
     <string name="loading_screen_unsupported_format">Unsupported format. Use an image or video file</string>
@@ -845,14 +942,46 @@
     <string name="native_ap_transport">Network transport</string>
     <string name="native_ap_transport_wifi_direct">WiFi Direct</string>
     <string name="native_ap_transport_hotspot">Hotspot</string>
-    <string name="native_ap_transport_hint">Experimental. The phone joins this device\'s own hotspot instead of a WiFi Direct group. Switch the hotspot on yourself before connecting, and set it to 5 GHz if you can - over 2.4 GHz the phone connects and then drops the session repeatedly without any picture, unless you lower the resolution and frame rate. If the network name cannot be read automatically, enter it below.</string>
+    <string name="native_ap_transport_hint">The phone joins this device\'s own hotspot instead of a WiFi Direct group. Switch it on before connecting.</string>
+    <string name="hotspot_band">Hotspot band</string>
+    <string name="hotspot_band_auto">Auto</string>
+    <string name="hotspot_band_5ghz">5 GHz only</string>
+    <string name="hotspot_band_24ghz">2.4 GHz only</string>
+    <string name="hotspot_band_hint">Auto asks for 5 GHz and falls back to 2.4 GHz. 2.4 GHz is reliable up to 720p, so pick 5 GHz only above that.</string>
+    <string name="wifi_direct_band">WiFi Direct band</string>
+    <string name="wifi_direct_band_auto">Auto</string>
+    <string name="wifi_direct_band_5ghz">5 GHz only</string>
+    <string name="wifi_direct_band_24ghz">2.4 GHz only</string>
+    <string name="wifi_direct_band_hint">Auto asks for 5 GHz and falls back to 2.4 GHz, and on Android 9 and older asks for a 5 GHz channel first. 2.4 GHz is reliable up to 720p, so pick 5 GHz only above that.</string>
     <string name="hotspot_interface_override">Hotspot network interface</string>
     <string name="hotspot_interface_override_message">Leave blank to work it out automatically. Set this if the log says more than one interface could be the access point, or picks the wrong one. The name is the one the log reports after &quot;Providing credentials from&quot;, or the entry holding your hotspot\'s address in &quot;ip -brief addr&quot; from a shell. Common names: ap0, wlan0, wlan1, wlan2, softap0, ra0.</string>
     <string name="hotspot_ssid_override">Hotspot name (manual)</string>
     <string name="hotspot_ssid_override_message">Leave blank to read the name from this device\'s hotspot settings automatically. Some devices do not let apps read it - if the log says the name could not be read, type it here exactly as it appears in your hotspot settings.</string>
     <string name="hotspot_password_override">Hotspot password (manual)</string>
     <string name="hotspot_password_override_message">Leave blank to read the password automatically. Needed on devices that do not let apps read the hotspot configuration. The phone will be given this password to join.</string>
-    <string name="hotspot_config_unreadable_toast">Can\'t read this device\'s hotspot name. Set it manually under Hotspot name/password in Settings.</string>
+
+    <!-- Native AA credential pre-flight: what this unit can and cannot tell the phone about its own network -->
+
+    <!-- The failure banner on the main screen. One per condition, shown after a failed attempt. -->
+    <string name="connection_issue_banner_bt_silent">Your phone connected over Bluetooth, but nothing this unit sent ever reached it. This is a fault in the head unit\'s Bluetooth that this app cannot work around. Tap to switch to USB, Wireless Helper or Auto, which do not need the Bluetooth handshake.</string>
+    <string name="connection_issue_banner_bssid">This unit could not read its own WiFi MAC address (BSSID), so your phone was never told which network to join. Tap to turn on Location, or to enter the address by hand.</string>
+    <string name="connection_issue_banner_hotspot_off">This unit\'s hotspot is off, so there was no network to send your phone to. Turn the hotspot on before connecting, or tap to let the app switch it on for you.</string>
+    <string name="connection_issue_banner_hotspot_config">This unit will not tell the app its hotspot name and password, so your phone had nothing to join. Tap to enter them by hand.</string>
+    <string name="connection_issue_banner_dismiss">Dismiss</string>
+    <!-- What the hotspot banner types into the settings search. Both override rows carry it
+         as a search keyword, so this one string is what makes the tap reach the pair. -->
+    <string name="connection_issue_remedy_hotspot_query">Hotspot name and password</string>
+
+    <string name="preflight_title">Before you connect</string>
+    <string name="preflight_intro">This device cannot supply everything Android Auto needs, so the phone will not be able to join:</string>
+    <string name="preflight_item_hotspot_name">Hotspot name. This device will not let apps read it.</string>
+    <string name="preflight_item_hotspot_password">Hotspot password. Without one the phone is offered an open network and refuses it.</string>
+    <string name="preflight_item_bssid">WiFi address (BSSID). No source on this device reports one.</string>
+    <string name="preflight_item_location">Location is off, so Android hides this device\'s WiFi address from apps and the phone will refuse to join. Turning Location on is the fix; typing an address by hand is only needed if it stays hidden afterwards.</string>
+    <string name="preflight_enter_now">Enter now</string>
+    <string name="preflight_open_location">Location</string>
+    <string name="preflight_later">Later</string>
+    <string name="preflight_invalid_bssid">That is not a WiFi address. Enter six pairs of hex digits, like 02:1A:11:FF:3C:4D.</string>
     <string name="native_wifi_version_exchange">Modern handshake (version exchange)</string>
     <string name="native_wifi_version_exchange_description">Opens the Bluetooth handshake by telling the phone which protocol version this head unit speaks, the way factory head units do, instead of going straight to the connection details. Off by default. Worth trying if wireless worked before an Android Auto update and has failed since; if it makes no difference, turn it back off.</string>
     <!-- QR Code Generator -->
@@ -938,4 +1067,21 @@
     <string name="rename_notice_title">Our name is changing to Open Headunit</string>
     <string name="rename_notice_message">Headunit Revived is growing, thanks to you, and it is turning into something of its own: Open Headunit. We are rolling the new name out over the next updates, so you may still see the old name in some places for a while.\n\nSame app, same people behind it, and all your settings stay exactly as they are.</string>
     <string name="rename_notice_button">Got it</string>
+    <string name="aa174_notice_title">Important: Android Auto 17.4+</string>
+    <string name="aa174_notice_message">Starting with Android Auto 17.4, Google introduced breaking internal changes that disable the automated launch via Wireless Helper as well as classic Self-Mode.<br/><br/><b>Available solutions:</b><br/><br/><b>1. Headunit Server (Developer Mode):</b><br/>The only remaining working solution for Self-Mode! On your phone, open Android Auto developer settings and tap "Start headunit server".<br/><br/><b>2. Native Mode:</b><br/>Connects directly via Wi-Fi Direct or Headunit Hotspot.<br/><br/><b>3. USB Wireless Dongle:</b><br/>A hardware USB wireless adapter provides the most reliable plug-and-play experience.<br/><br/><b>4. Wireless Helper:</b><br/>Continues to work reliably for Android Auto up to version 17.3.</string>
+    <string name="aa174_notice_button_confirm">Got it</string>
+    <string name="aa174_notice_button_guide">Open Guide</string>
+    <string name="category_ui">UI</string>
+    <string name="hide_phone_signal_label">Hide the Phone\'s Signal</string>
+    <string name="hide_battery_level_label">Hide the Phone\'s Battery Level</string>
+    <string name="hide_clock_label">Hide the Clock</string>
+    <string name="might_broken_on_newer_aa_versions">This functionality might not work on newer versions of Android Auto</string>
+    <string name="auto_connect_delay">Auto-Connect Delay</string>
+    <string name="auto_connect_delay_description">Wait before attempting to connect on startup (useful if Wi-Fi needs time to wake up)</string>
+    <string name="auto_connect_delay_none">None (Instant)</string>
+    <string name="auto_connect_delay_seconds_format">%d s</string>
+    <string name="auto_connect_delay_custom">Custom…</string>
+    <string name="auto_connect_delay_summary_format">%1$s (%2$ds delay)</string>
+    <string name="failed_aa_not_system">Failed: Android Auto isn\'t installed as a system app!</string>
+    <string name="failed_aa_not_installed">Failed: Android Auto is not installed!</string>
 </resources>

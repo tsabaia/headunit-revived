@@ -101,6 +101,9 @@ object AppLog {
                 }
                 try { writer.flush() } catch (_: IOException) {}
                 try { writer.close() } catch (_: IOException) {}
+                if (file.exists() && file.length() == 0L) {
+                    file.delete()
+                }
             }
 
             /**
@@ -197,47 +200,57 @@ object AppLog {
     val LOG_VERBOSE get() = LOG_LEVEL <= Log.VERBOSE
     val LOG_DEBUG get() = LOG_LEVEL <= Log.DEBUG
 
+    @JvmStatic
     fun i(msg: String) {
         if (isLoggable(Log.INFO)) log(Log.INFO, format(msg))
     }
 
+    @JvmStatic
     fun i(msg: String, vararg params: Any) {
         if (isLoggable(Log.INFO)) log(Log.INFO, format(msg, *params))
     }
 
+    @JvmStatic
     fun e(msg: String?) {
         if (isLoggable(Log.ERROR)) loge(format(msg ?: "Unknown error"), null)
     }
 
+    @JvmStatic
     fun e(msg: String, tr: Throwable) {
         if (isLoggable(Log.ERROR)) loge(format(msg), tr)
     }
 
+    @JvmStatic
     fun e(tr: Throwable) {
         if (isLoggable(Log.ERROR)) loge(tr.message ?: "Unknown error", tr)
     }
 
-
+    @JvmStatic
     fun e(msg: String?, vararg params: Any) {
         if (isLoggable(Log.ERROR)) loge(format(msg ?: "Unknown error", *params), null)
     }
 
+    @JvmStatic
     fun v(msg: String, vararg params: Any) {
         if (isLoggable(Log.VERBOSE)) log(Log.VERBOSE, format(msg, *params))
     }
 
+    @JvmStatic
     fun d(msg: String, vararg params: Any) {
         if (isLoggable(Log.DEBUG)) log(Log.DEBUG, format(msg, *params))
     }
 
+    @JvmStatic
     fun d(msg: String) {
         if (isLoggable(Log.DEBUG)) log(Log.DEBUG, format(msg))
     }
 
+    @JvmStatic
     fun w(msg: String) {
         if (isLoggable(Log.WARN)) log(Log.WARN, format(msg))
     }
 
+    @JvmStatic
     fun w(msg: String, vararg params: Any) {
         if (isLoggable(Log.WARN)) log(Log.WARN, format(msg, *params))
     }
@@ -248,9 +261,17 @@ object AppLog {
 
     private fun isLoggable(priority: Int): Boolean = priority >= LOG_LEVEL
 
+    /**
+     * The trace is not conditional on the destination.
+     *
+     * It used to be attached only when the logger was [Logger.Android], so a capture written to a
+     * file — the one that outlives the fault and actually gets read afterwards — recorded the
+     * message and dropped the exception. "Wireless server error" with no cause is not a diagnosis,
+     * and the throwable is the whole reason these call sites pass one.
+     */
     private fun loge(message: String, tr: Throwable?) {
-        val trace = if (LOGGER is Logger.Android) Log.getStackTraceString(tr) else ""
-        LOGGER.println(Log.ERROR, TAG, message + '\n' + trace)
+        val trace = if (tr != null) Log.getStackTraceString(tr) else ""
+        LOGGER.println(Log.ERROR, TAG, if (trace.isEmpty()) message else "$message\n$trace")
     }
 
     private fun closeAppLogFileLogger() {

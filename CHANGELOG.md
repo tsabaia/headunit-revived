@@ -1,8 +1,23 @@
 # Changelog
-### v.3.3.0-alpha
+### v.3.3.0-beta4
 - Begin for theming of the App.
 - Refactor WiFi-Code from AapService into their own classes for better maintenance, thanks to @MrEAlderson
+- Refactor Self-Mode and USB-Mode from AapService into their own classes for better maintenance, thanks to @MrEAlderson
+- Refactor Audio and Video Code from AapService into their own classes for better maintenance, thanks to @o-jcardenass
 - USB-Blacklist Filter to prevent the app from asking for non Android phones
+- Added: Option to disable the clock, thanks to @MrEAlderson
+- Added: French translation 🇫🇷 thanks to @phiDu-fr
+- Fix/session lifecycle and video concealment
+- Video: pace the transport thread instead of shedding reference frames
+- UI: a destroyed activity stops listening, and a recycled row keeps its subtitle
+- Fix Android 4 Problems
+- Fix Orientation issues
+- Several Native Mode fixes and enhancements
+- Mic: fix the uplink, and let the phone keep the microphone
+- Fix: Close keyboard that stays open on older Android versions to prevent layout issues
+- Per-channel audio stream selectio thanks to @nicoruy
+- Added Android Auto 17.4 Notice for users, who don't know why their wireless setup broke
+- Clean Up Dark Mode and Theming Option confusions
 
 ### v.3.2.6
 - Fix settings UI crash and dpi input on older Android devices

@@ -12,7 +12,6 @@ import android.view.ViewGroup
 import android.view.LayoutInflater
 import android.view.ViewTreeObserver
 import androidx.constraintlayout.widget.ConstraintLayout
-import android.net.VpnService
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.pm.PackageManager
@@ -27,24 +26,26 @@ import com.andrerinas.openheadunit.App
 import com.andrerinas.openheadunit.R
 import com.andrerinas.openheadunit.aap.AapProjectionActivity
 import com.andrerinas.openheadunit.aap.AapService
-import com.andrerinas.openheadunit.connection.NearbyManager
-import com.andrerinas.openheadunit.connection.UsbDeviceCompat
+import com.andrerinas.openheadunit.connection.wifi.modes.helper.NearbyManager
+import com.andrerinas.openheadunit.connection.usb.UsbDeviceCompat
 import android.content.res.Configuration
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothManager
 import com.andrerinas.openheadunit.utils.AppLog
 import com.andrerinas.openheadunit.utils.AppPermissions
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collect
 import com.andrerinas.openheadunit.utils.Settings
+import com.andrerinas.openheadunit.utils.ColorUtils
+import com.andrerinas.openheadunit.utils.HomeUiHelper
 import com.andrerinas.openheadunit.utils.VpnControl
 import com.andrerinas.openheadunit.utils.BluetoothHelper
-import com.andrerinas.openheadunit.connection.UsbReceiver
-import com.andrerinas.openheadunit.connection.UsbAccessoryMode
+import com.andrerinas.openheadunit.connection.usb.UsbReceiver
+import com.andrerinas.openheadunit.connection.usb.UsbAccessoryMode
+import com.andrerinas.openheadunit.connection.wifi.modes.helper.HelperStrategy
+import com.andrerinas.openheadunit.connection.wifi.WifiLauncherMode
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 
 class HomeFragment : Fragment() {
 
@@ -79,6 +80,7 @@ class HomeFragment : Fragment() {
     private var hasAttemptedAutoConnect = false
     private var hasAttemptedSingleUsbAutoConnect = false
     private var activeDialog: androidx.appcompat.app.AlertDialog? = null
+    private var portraitLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
 
     private fun updateWifiButtonFeedback(scanning: Boolean) {
         if (scanning) {
@@ -113,6 +115,8 @@ class HomeFragment : Fragment() {
 
         setupListeners()
         updateProjectionButtonText()
+        updateButtonStyle()
+        updateButtonScale()
 
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -133,39 +137,53 @@ class HomeFragment : Fragment() {
                 Intent(requireContext(), AapService::class.java))
         }
 
-        for (methodId in appSettings.autoConnectPriorityOrder) {
-            if (commManager.isConnected) break
-            when (methodId) {
-                Settings.AUTO_CONNECT_LAST_SESSION -> {
-                    if (appSettings.autoConnectLastSession && !hasAttemptedAutoConnect && !commManager.isConnected) {
-                        hasAttemptedAutoConnect = true
-                        if (attemptAutoConnect()) {
-                            (requireActivity() as? MainActivity)?.beginAutoConnect(
-                                "auto-connect last session",
-                                MainActivity.ConnectionUiMode.PILL
-                            )
+        viewLifecycleOwner.lifecycleScope.launch {
+            val isAutoConnectEnabled = appSettings.autoStartSelfMode ||
+                appSettings.autoConnectLastSession ||
+                appSettings.autoConnectSingleUsbDevice
+
+            val delaySec = appSettings.autoConnectDelaySeconds
+            if (isAutoConnectEnabled && delaySec > 0 && !forceSelfModeLaunch && !commManager.isConnected) {
+                AppLog.i("HomeFragment: Waiting ${delaySec}s before attempting auto-connect...")
+                delay(delaySec * 1000L)
+            }
+
+            if (!isAdded || commManager.isConnected) return@launch
+
+            for (methodId in appSettings.autoConnectPriorityOrder) {
+                if (commManager.isConnected) break
+                when (methodId) {
+                    Settings.AUTO_CONNECT_LAST_SESSION -> {
+                        if (appSettings.autoConnectLastSession && !hasAttemptedAutoConnect && !commManager.isConnected) {
+                            hasAttemptedAutoConnect = true
+                            if (attemptAutoConnect()) {
+                                (requireActivity() as? MainActivity)?.beginAutoConnect(
+                                    "auto-connect last session",
+                                    MainActivity.ConnectionUiMode.OVERLAY
+                                )
+                            }
                         }
                     }
-                }
-                Settings.AUTO_CONNECT_SELF_MODE -> {
-                    if ((appSettings.autoStartSelfMode || forceSelfModeLaunch) && !hasAutoStarted && !commManager.isConnected) {
-                        hasAutoStarted = true
-                        forceSelfModeLaunch = false // Reset once processed
-                        (requireActivity() as? MainActivity)?.beginAutoConnect(
-                            "auto-start self mode",
-                            MainActivity.ConnectionUiMode.PILL
-                        )
-                        startSelfMode()
-                    }
-                }
-                Settings.AUTO_CONNECT_SINGLE_USB -> {
-                    if (appSettings.autoConnectSingleUsbDevice && !hasAttemptedSingleUsbAutoConnect && !commManager.isConnected) {
-                        hasAttemptedSingleUsbAutoConnect = true
-                        if (attemptSingleUsbAutoConnect()) {
+                    Settings.AUTO_CONNECT_SELF_MODE -> {
+                        if ((appSettings.autoStartSelfMode || forceSelfModeLaunch) && !hasAutoStarted && !commManager.isConnected) {
+                            hasAutoStarted = true
+                            forceSelfModeLaunch = false // Reset once processed
                             (requireActivity() as? MainActivity)?.beginAutoConnect(
-                                "auto-connect single USB",
-                                MainActivity.ConnectionUiMode.PILL
+                                "auto-start self mode",
+                                MainActivity.ConnectionUiMode.OVERLAY
                             )
+                            startSelfMode()
+                        }
+                    }
+                    Settings.AUTO_CONNECT_SINGLE_USB -> {
+                        if (appSettings.autoConnectSingleUsbDevice && !hasAttemptedSingleUsbAutoConnect && !commManager.isConnected) {
+                            hasAttemptedSingleUsbAutoConnect = true
+                            if (attemptSingleUsbAutoConnect()) {
+                                (requireActivity() as? MainActivity)?.beginAutoConnect(
+                                    "auto-connect single USB",
+                                    MainActivity.ConnectionUiMode.OVERLAY
+                                )
+                            }
                         }
                     }
                 }
@@ -174,7 +192,6 @@ class HomeFragment : Fragment() {
     }
 
     private fun startSelfModeInternal() {
-        AapService.selfMode = true
         val intent = Intent(requireContext(), AapService::class.java)
         intent.action = AapService.ACTION_START_SELF_MODE
         ContextCompat.startForegroundService(requireContext(), intent)
@@ -189,7 +206,7 @@ class HomeFragment : Fragment() {
 
         if (activeNetwork == null && VpnControl.isVpnAvailable()) {
             AppLog.i("Device is offline. Preparing Dummy VPN for Self Mode.")
-            val vpnIntent = VpnService.prepare(requireContext())
+            val vpnIntent = VpnControl.consentIntent(requireContext())
             if (vpnIntent != null) {
                 vpnPermissionLauncher.launch(vpnIntent)
                 return
@@ -218,7 +235,7 @@ class HomeFragment : Fragment() {
 
         // [FIX] Skip manual WiFi connection if Native AA is selected.
         // Native AA handles its own handshake via Bluetooth/P2P.
-        if (appSettings.wifiConnectionMode == 3) {
+        if (appSettings.wifiConnectionMode == WifiLauncherMode.NATIVE) {
             AppLog.i("HomeFragment: Native AA mode active. Skipping manual auto-connect attempt.")
             return false
         }
@@ -237,7 +254,7 @@ class HomeFragment : Fragment() {
 
         return when (connectionType) {
             Settings.CONNECTION_TYPE_WIFI -> {
-                if (appSettings.wifiConnectionMode == 1) {
+                if (appSettings.wifiConnectionMode == WifiLauncherMode.AUTO) {
                     val ip = appSettings.lastConnectionIp
                     if (ip.isNotEmpty()) {
                         AppLog.i("Auto-connect: Attempting WiFi connection to $ip")
@@ -302,45 +319,21 @@ class HomeFragment : Fragment() {
         return true
     }
 
-    private val originalBackgrounds = mapOf(
-        R.id.self_mode_button to R.drawable.gradient_blue,
-        R.id.usb_button to R.drawable.gradient_orange,
-        R.id.wifi_button to R.drawable.gradient_purple,
-        R.id.settings_button to R.drawable.gradient_darkblue
-    )
-
-    private fun applyMonochromeStyle() {
-        val monochromeBackground = ContextCompat.getDrawable(requireContext(), R.drawable.gradient_monochrome)
-        val grayTint = ColorStateList.valueOf(0xFF808080.toInt())
-        listOf(self_mode_button, usb, wifi, settings).forEach { button ->
-            button.background = monochromeBackground?.constantState?.newDrawable()?.mutate()
-            (button as? com.google.android.material.button.MaterialButton)?.iconTint = grayTint
-        }
-    }
-
-    private fun restoreOriginalStyle() {
-        val whiteTint = ColorStateList.valueOf(0xFFFFFFFF.toInt())
-        val buttons = listOf(self_mode_button, usb, wifi, settings)
-        val ids = listOf(R.id.self_mode_button, R.id.usb_button, R.id.wifi_button, R.id.settings_button)
-        buttons.zip(ids).forEach { (button, id) ->
-            originalBackgrounds[id]?.let { drawableRes ->
-                button.background = ContextCompat.getDrawable(requireContext(), drawableRes)
-            }
-            (button as? com.google.android.material.button.MaterialButton)?.iconTint = whiteTint
-        }
-    }
-
     private fun updateButtonStyle() {
-        val appSettings = App.provide(requireContext()).settings
+        val ctx = context ?: return
+        val v = view ?: return
+        val appSettings = App.provide(ctx).settings
         val isNightActive = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val isDarkTheme = appSettings.appTheme == Settings.AppTheme.DARK ||
-                          appSettings.appTheme == Settings.AppTheme.EXTREME_DARK ||
-                          isNightActive
-        if (isDarkTheme && appSettings.monochromeIcons) {
-            applyMonochromeStyle()
-        } else {
-            restoreOriginalStyle()
-        }
+        HomeUiHelper.applyButtonStyles(ctx, v, appSettings, isNightActive)
+    }
+
+    private fun updateButtonScale() {
+        val v = view ?: return
+        val ctx = context ?: return
+        val appSettings = App.provide(ctx).settings
+        val density = resources.displayMetrics.density
+        val isPortrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        HomeUiHelper.applyButtonScale(v, appSettings.homeButtonScalePercent, isPortrait, density)
     }
 
     private fun setupListeners() {
@@ -462,7 +455,7 @@ class HomeFragment : Fragment() {
         wifi.setOnClickListener {
             val mode = App.provide(requireContext()).settings.wifiConnectionMode
             when (mode) {
-                1 -> { // Auto (Headunit Server) - One-Shot Scan
+                WifiLauncherMode.AUTO -> { // Auto (Headunit Server) - One-Shot Scan
                     if (commManager.isConnected) {
                         // Already connected
                     } else if (AapService.scanningState.value) {
@@ -479,12 +472,12 @@ class HomeFragment : Fragment() {
                         ContextCompat.startForegroundService(requireContext(), intent)
                     }
                 }
-                2 -> { // Helper (Wireless Launcher)
+                WifiLauncherMode.HELPER -> { // Helper (Wireless Launcher)
                     if (commManager.isConnected) {
                         // Already connected
                     } else {
                         val strategy = App.provide(requireContext()).settings.helperConnectionStrategy
-                        if (strategy == 4) {
+                        if (strategy == HelperStrategy.HEADUNIT_HOTSPOT) {
                             if (!AapService.scanningState.value) {
                                 (requireActivity() as? MainActivity)?.beginAutoConnect(
                                     "manual WiFi helper scan",
@@ -498,7 +491,7 @@ class HomeFragment : Fragment() {
                             com.andrerinas.openheadunit.utils.ShareHotspotQrDialog.show(
                                 requireContext()
                             )
-                        } else if (strategy == 2) {
+                        } else if (strategy == HelperStrategy.NEARBY_DEVICES) {
                             // Nearby Devices — show live discovery dialog
                             showNearbyDeviceSelector()
                         } else if (AapService.scanningState.value) {
@@ -516,7 +509,7 @@ class HomeFragment : Fragment() {
                         }
                     }
                 }
-                3 -> { // Native AA
+                WifiLauncherMode.NATIVE -> { // Native AA
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                         ContextCompat.checkSelfPermission(requireContext(), android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                         bluetoothPermissionLauncher.launch(android.Manifest.permission.BLUETOOTH_CONNECT)
@@ -524,7 +517,7 @@ class HomeFragment : Fragment() {
                         showNativeAaDeviceSelector()
                     }
                 }
-                else -> { // Manual (0) -> Open List
+                WifiLauncherMode.MANUAL -> { // Manual (0) -> Open List
                     val controller = findNavController()
                     if (controller.currentDestination?.id == R.id.homeFragment) {
                         controller.navigate(R.id.action_homeFragment_to_networkListFragment)
@@ -558,12 +551,16 @@ class HomeFragment : Fragment() {
     private fun constrainPortraitGridWidth(rootView: View) {
         val gridLayout = rootView.findViewById<android.widget.LinearLayout>(R.id.main_buttons_layout)
             ?: return
-        // Capture density before the callback — accessing `resources` inside onGlobalLayout
-        // is unsafe if the fragment has been detached by the time the layout pass fires.
         val density = resources.displayMetrics.density
-        gridLayout.viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+
+        portraitLayoutListener?.let {
+            if (gridLayout.viewTreeObserver.isAlive) {
+                gridLayout.viewTreeObserver.removeOnGlobalLayoutListener(it)
+            }
+        }
+
+        val listener = object : ViewTreeObserver.OnGlobalLayoutListener {
             override fun onGlobalLayout() {
-                gridLayout.viewTreeObserver.removeOnGlobalLayoutListener(this)
                 if (!isAdded) return
 
                 val container = gridLayout.parent as? View ?: return
@@ -588,14 +585,17 @@ class HomeFragment : Fragment() {
                 val cellPadPx = (12 * 2 * 2 * density).toInt() // 2 cols × 2 sides × 12 dp
                 val maxGridW = maxBtn * 2 + cellPadPx
 
-                // Only shrink, never grow beyond what the existing constraints allow
-                if (maxGridW < containerW) {
-                    val params = gridLayout.layoutParams as? ConstraintLayout.LayoutParams ?: return
-                    params.matchConstraintMaxWidth = maxGridW
+                val defaultMaxW = (1200 * density).toInt()
+                val targetMaxWidth = if (maxGridW < containerW) maxGridW else defaultMaxW
+                val params = gridLayout.layoutParams as? ConstraintLayout.LayoutParams ?: return
+                if (params.matchConstraintMaxWidth != targetMaxWidth) {
+                    params.matchConstraintMaxWidth = targetMaxWidth
                     gridLayout.layoutParams = params
                 }
             }
-        })
+        }
+        portraitLayoutListener = listener
+        gridLayout.viewTreeObserver.addOnGlobalLayoutListener(listener)
     }
 
     private fun updateProjectionButtonText() {
@@ -611,10 +611,20 @@ class HomeFragment : Fragment() {
         AppLog.i("HomeFragment: onResume. isConnected=${commManager.isConnected}")
         updateProjectionButtonText()
         updateButtonStyle()
+        updateButtonScale()
         updateTextColors()
+        if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) {
+            view?.let { constrainPortraitGridWidth(it) }
+        }
         activity?.let { act ->
-            if (!act.isFinishing && !act.isDestroyed) {
+            val isDestroyed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1)
+                act.isDestroyed
+            else
+                false
+
+            if (!act.isFinishing && !isDestroyed) {
                 RenameNotice.maybeShow(act, App.provide(requireContext()).settings)
+                Aa174Notice.maybeShow(act, App.provide(requireContext()).settings)
             }
         }
     }
@@ -624,6 +634,17 @@ class HomeFragment : Fragment() {
         activeDialog?.dismiss()
         activeDialog = null
         RenameNotice.dismiss()
+        Aa174Notice.dismiss()
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        portraitLayoutListener?.let {
+            view?.findViewById<View>(R.id.main_buttons_layout)?.viewTreeObserver?.let { vto ->
+                if (vto.isAlive) vto.removeOnGlobalLayoutListener(it)
+            }
+            portraitLayoutListener = null
+        }
     }
 
     private fun showNativeAaDeviceSelector() {
